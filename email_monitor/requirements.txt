@@ -1,6 +1,5 @@
 google-auth-oauthlib==1.0.0 
 google-api-python-client==2.86.0 
 google-auth-httplib2==0.2.0 
-google-auth-transport==1.0.0 
 kafka-python==2.0.2 
 tenacity==8.5.0
