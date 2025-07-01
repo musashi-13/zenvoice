@@ -10,15 +10,16 @@ from googleapiclient.errors import HttpError
 from kafka import KafkaProducer
 from email import message_from_bytes
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from google.auth.transport.requests import Request
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 CREDENTIALS_FILE = "credentials.json"
+TOKEN_FILE = "token.json"
 USER_ID = "me"
 ALLOWED_SENDERS = [
     "karanhathwar@gmail.com",
     "ishuvijay88@gmail.com",
-    # Add more sender emails here
 ]
 KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 KAFKA_INVOICES_TOPIC = "email-invoices"
@@ -77,19 +78,23 @@ except Exception as e:
 def authenticate_gmail():
     """Authenticate with Gmail API using OAuth 2.0."""
     creds = None
-    token_file = "token.pickle"
     
-    if os.path.exists(token_file):
-        with open(token_file, 'rb') as token:
+    # Check if token.json exists to reuse credentials
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, 'rb') as token:
             creds = pickle.load(token)
     
+    # If no valid credentials, attempt to refresh or initiate OAuth flow
     if not creds or not creds.valid:
         if not os.path.exists(CREDENTIALS_FILE):
             logger.error(f"{CREDENTIALS_FILE} not found")
             return None
-        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-        creds = flow.run_local_server(port=0)
-        with open(token_file, 'wb') as token:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open(TOKEN_FILE, 'wb') as token:
             pickle.dump(creds, token)
     
     return build('gmail', 'v1', credentials=creds)
@@ -144,7 +149,6 @@ def process_email(gmail_service, message_id):
         producer.send(KAFKA_INVOICES_TOPIC, email_data)
         logger.info(f"Sent email {message_id} with {len(attachments)} attachments to {KAFKA_INVOICES_TOPIC}")
 
-        # Mark email as read
         gmail_service.users().messages().modify(
             userId=USER_ID, id=message_id, body={'removeLabelIds': ['UNREAD']}
         ).execute()
@@ -168,8 +172,6 @@ def main():
         if messages:
             for msg in messages:
                 process_email(gmail_service, msg['id'])
-        
-        # logger.info(f"Waiting {POLL_INTERVAL} seconds for next check")
         time.sleep(POLL_INTERVAL)
 
 if __name__ == "__main__":

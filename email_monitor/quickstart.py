@@ -6,17 +6,17 @@ from googleapiclient.errors import HttpError
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
-CREDENTIALS_FILE = "credentials.json"  # Path to your credentials.json file
-USER_ID = "me"  # Refers to the authenticated user
+CREDENTIALS_FILE = "credentials.json"
+TOKEN_FILE = "token.json"
+USER_ID = "me"
 
 def authenticate_gmail():
     """Authenticate with Gmail API using OAuth 2.0."""
     creds = None
-    token_file = "token.pickle"
     
-    # Check if token.pickle exists to reuse credentials
-    if os.path.exists(token_file):
-        with open(token_file, 'rb') as token:
+    # Check if token.json exists to reuse credentials
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, 'rb') as token:
             creds = pickle.load(token)
     
     # If no valid credentials, initiate OAuth flow
@@ -26,29 +26,19 @@ def authenticate_gmail():
             return None
         flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
         creds = flow.run_local_server(port=0)
-        with open(token_file, 'wb') as token:
+        with open(TOKEN_FILE, 'wb') as token:
             pickle.dump(creds, token)
     
     return build('gmail', 'v1', credentials=creds)
 
 def test_gmail_api():
-    """Test Gmail API by listing labels."""
+    """Test Gmail API"""
     try:
-        # Authenticate and create Gmail API service
         service = authenticate_gmail()
         if not service:
             return
         
-        # Call the Gmail API to list labels
-        results = service.users().labels().list(userId=USER_ID).execute()
-        labels = results.get('labels', [])
-        
-        if not labels:
-            print("No labels found.")
-        else:
-            print("Labels in your Gmail account:")
-            for label in labels:
-                print(f"- {label['name']}")
+        print("✅ Successfully authenticated with Gmail API.")
     
     except HttpError as error:
         print(f"An error occurred: {error}")
