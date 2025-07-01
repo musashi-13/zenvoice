@@ -2,10 +2,9 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-COPY invoice_uploader/requirements.txt .
+COPY ./requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY invoice_uploader/invoice_uploader.py .
-COPY .env .
+COPY ./invoice_uploader.py .
 
 CMD ["python", "invoice_uploader.py"]

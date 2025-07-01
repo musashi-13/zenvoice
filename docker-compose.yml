@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   kafka:
     image: bitnami/kafka:latest
@@ -17,7 +19,7 @@ services:
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@127.0.0.1:9093
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
-      - KAFKA_CFG_NUM_PARTITIONS=2
+      - KAFKA_CFG_NUM_PARTITIONS=3
     volumes:
       - kafka_data:/bitnami/kafka
     healthcheck:
@@ -30,6 +32,7 @@ services:
 
   init-kafka:
     image: bitnami/kafka:latest
+    container_name: init-kafka
     depends_on:
       kafka:
         condition: service_healthy
@@ -37,28 +40,108 @@ services:
     command: |
       "
       echo -e 'Creating Kafka topics'
-      /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic email-invoices --replication-factor 1 --partitions 2
-      /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic logs --replication-factor 1 --partitions 2
+      /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic email-invoices --replication-factor 1 --partitions 3
+      /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic logs --replication-factor 1 --partitions 3
       echo -e 'Successfully created topics:'
       /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
       "
     networks:
       - kafka-network
 
-  app:
-    build: .
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=invoice-pipeline
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --lc-collate=C --lc-ctype=C
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d invoice-pipeline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kafka-network
+
+  email-monitor:
+    build:
+      context: ./email_monitor
+      dockerfile: Dockerfile
+    container_name: email-monitor
     depends_on:
       kafka:
         condition: service_healthy
     volumes:
-      - ./token.pickle:/app/token.pickle
+      - ./email_monitor/token.pickle:/app/token.pickle
+    ports:
+      - "8080:8080"
     environment:
       - PYTHONUNBUFFERED=1
+      - OAUTH_PORT=8080
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+    networks:
+      - kafka-network
+
+  invoice-uploader:
+    build:
+      context: ./invoice_uploader
+      dockerfile: Dockerfile
+    container_name: invoice-uploader
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=invoice-pipeline
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+    networks:
+      - kafka-network
+
+  ocr-processor:
+    build:
+      context: ./ocr_processor
+      dockerfile: Dockerfile
+    container_name: ocr-processor
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./ocr_processor/processed_emails.json:/app/processed_emails.json
+      - ./ocr_processor/invoices:/app/invoices
+      - ./ocr_processor/data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=invoice-pipeline
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     networks:
       - kafka-network
 
 volumes:
   kafka_data:
+    driver: local
+  postgres_data:
     driver: local
 
 networks:
