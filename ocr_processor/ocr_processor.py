@@ -200,33 +200,18 @@ def format_with_gemini(data, email_id, attachment_index):
             )
         )
         response = model.generate_content(prompt)
-        logging.info(f"Raw Gemini response: {response.text!r}")
 
-        invoicejsontext = response.text.strip()
-        invoicejsontext = invoicejsontext.lstrip("`\ufeff\r\n ").rstrip("`\r\n ")
-        
-        start = invoicejsontext.find("{")
-        end   = invoicejsontext.rfind("}")
-        if start == -1 or end == -1 or start >= end:
-            logging.error("Couldn't locate JSON object in response: %r", invoicejsontext)
-            return None
-        invoicejsontext = invoicejsontext[start : end+1]
-        
-        logging.debug("Final JSON payload (repr): %r", invoicejsontext)
-        
+        print(f"Response: {response.text}")
+
+        invoicejsontext = response.text[8:-4]
+        print(invoicejsontext)
         invoicejson = json.loads(invoicejsontext)
 
         os.makedirs("/app/data", exist_ok=True)
         invoices_file = os.path.join("/app/data", "invoices.json")
-        try:
-            with open(invoices_file, "r") as f:
-                existing_data = json.load(f)
-        except FileNotFoundError:
-            existing_data = {"invoices": []}
+        with open(invoices_file, "w") as json_file:
+            json.dump(invoicejson, json_file, indent=4) 
         
-        existing_data["invoices"].append(invoicejson["invoices"][0])
-        with open(invoices_file, "w") as f:
-            json.dump(existing_data, f, indent=4)
         logging.info(f"Saved JSON for email {email_id}, attachment {attachment_index}")
 
         return invoicejson

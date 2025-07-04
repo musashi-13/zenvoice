@@ -11,16 +11,17 @@ from kafka import KafkaProducer
 from email import message_from_bytes
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from google.auth.transport.requests import Request
+from zoho_api import ZohoAPI
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 CREDENTIALS_FILE = "credentials.json"
 TOKEN_FILE = "token.json"
 USER_ID = "me"
-ALLOWED_SENDERS = [
-    "karanhathwar@gmail.com",
-    "ishuvijay88@gmail.com",
-]
 KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 KAFKA_INVOICES_TOPIC = "email-invoices"
 KAFKA_LOGS_TOPIC = "logs"
@@ -78,13 +79,9 @@ except Exception as e:
 def authenticate_gmail():
     """Authenticate with Gmail API using OAuth 2.0."""
     creds = None
-    
-    # Check if token.json exists to reuse credentials
     if os.path.exists(TOKEN_FILE):
         with open(TOKEN_FILE, 'rb') as token:
             creds = pickle.load(token)
-    
-    # If no valid credentials, attempt to refresh or initiate OAuth flow
     if not creds or not creds.valid:
         if not os.path.exists(CREDENTIALS_FILE):
             logger.error(f"{CREDENTIALS_FILE} not found")
@@ -96,13 +93,25 @@ def authenticate_gmail():
             creds = flow.run_local_server(port=0)
         with open(TOKEN_FILE, 'wb') as token:
             pickle.dump(creds, token)
-    
     return build('gmail', 'v1', credentials=creds)
+
+def fetch_allowed_senders():
+    """Fetch vendor emails from Zoho Books."""
+    zoho_api = ZohoAPI()
+    allowed_senders = zoho_api.get_vendors()
+    logger.info(f"Fetched {len(allowed_senders)} allowed senders from Zoho Books")
+    if not allowed_senders:
+        logger.warning("No vendor emails fetched from Zoho. Using empty list.")
+    return allowed_senders
 
 def fetch_emails(gmail_service):
     """Fetch unread emails with 'invoice' in subject from allowed senders."""
+    allowed_senders = fetch_allowed_senders()
+    if not allowed_senders:
+        logger.warning("No allowed senders fetched from Zoho. Using empty list.")
+        allowed_senders = []
+    query = "from:(" + " OR ".join(allowed_senders) + ") invoice is:unread"
     try:
-        query = "from:(" + " OR ".join(ALLOWED_SENDERS) + ") invoice is:unread"
         results = gmail_service.users().messages().list(userId=USER_ID, q=query).execute()
         messages = results.get('messages', [])
         return messages
