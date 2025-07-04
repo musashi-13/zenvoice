@@ -105,11 +105,12 @@ def insert_or_update_invoice(conn, invoice_data):
         logging.error(f"Error inserting/updating invoice {invoice_id}: {e}")
         conn.rollback()
 
-def ocr_pdf(pdf_path):
-    """Extract text from a scanned PDF using PyMuPDF and Tesseract OCR."""
+def ocr_pdf(pdf_data):
+    """Extract text from a PDF in memory using PyMuPDF and Tesseract OCR."""
     text = ""
     try:
-        pdf_document = fitz.open(pdf_path)
+        # Load PDF from bytes
+        pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
         for page_num in range(len(pdf_document)):
             page = pdf_document[page_num]
             page_text = page.get_text()
@@ -123,90 +124,118 @@ def ocr_pdf(pdf_path):
             text += f"\n\n--- Page {page_num + 1} ---\n\n" + page_text
         pdf_document.close()
     except Exception as e:
-        logging.error(f"Error performing OCR on {pdf_path}: {e}")
+        logging.error(f"Error performing OCR on PDF: {e}")
         raise
     return text
+
+import re
+
+import re
 
 def format_with_gemini(data, email_id, attachment_index):
     """Format extracted text into structured JSON using Gemini."""
     prompt = """
-You are a specialized AI assistant for extracting invoice data from text and converting it to a structured JSON format.
+    You are a specialized AI assistant for extracting invoice data from text and converting it to a structured JSON format.
 
-I'll provide the text extracted from an invoice. Make sure you store the PO No. as bill_number in the extracted json. Please extract the following information and format it as JSON:
-- Vendor name (company issuing the invoice)
-- PO number, not the invoice number
-- Bill/invoice date
-- Due date or payment terms
-- Bill-to information (name and address)
-- Ship-to information (address)
-- Line items (including item details, quantity, rate, and amount)
-- Subtotal
-- Tax information (rate and calculated amount)
-- Total amount
-- Any notes or terms
+    I'll provide the text extracted from an invoice. Make sure you store the PO No. as bill_number in the extracted json. Please extract the following information and format it as JSON:
+    - Vendor name (company issuing the invoice)
+    - PO number, not the invoice number
+    - Bill/invoice date
+    - Due date or payment terms
+    - Bill-to information (name and address)
+    - Ship-to information (address)
+    - Line items (including item details, quantity, rate, and amount)
+    - Subtotal
+    - Tax information (rate and calculated amount)
+    - Total amount
+    - Any notes or terms
 
-The text from the invoice is as follows:
+    The text from the invoice is as follows:
 
-""" + data + """
+    """ + data + """
 
-Please return the data in this exact JSON structure:
-{
-  "invoices": [
+    Please return the data in this exact JSON structure:
     {
-      "vendor_name": "",
-      "bill_number": "",
-      "bill_date": "",
-      "due_date": "",
-      "items": [
+      "invoices": [
         {
-          "item_details": "",
-          "account": "",
-          "quantity": 0,
-          "rate": 0,
-          "amount": 0
+          "vendor_name": "",
+          "bill_number": "",
+          "bill_date": "",
+          "due_date": "",
+          "items": [
+            {
+              "item_details": "",
+              "account": "",
+              "quantity": 0,
+              "rate": 0,
+              "amount": 0
+            }
+          ],
+          "sub_total": 0,
+          "discount": {
+            "percentage": 0,
+            "amount": 0
+          },
+          "tax": {
+            "tds_percent": "0",
+            "tds_amount": 0,
+            "tds_tax_name": ""
+          },
+          "total": 0
         }
-      ],
-      "sub_total": 0,
-      "discount": {
-        "percentage": 0,
-        "amount": 0
-      },
-      "tax": {
-        "tds_percent": "0",
-        "tds_amount": 0,
-        "tds_tax_name": ""
-      },
-      "total": 0
+      ]
     }
-  ]
-}
 
-Don't include any explanations or markdown in your response, just the clean JSON output.
+    Don't include any explanations or markdown in your response, just the clean JSON output.
     """
     try:
-        model = genai.GenerativeModel("gemini-1.5-pro-latest")
+        genai.configure(api_key=API_KEY)
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash-lite-preview-06-17",
+            generation_config=genai.types.GenerationConfig(
+                candidate_count=1,
+                stop_sequences=[],
+                max_output_tokens=8192,
+                temperature=0.7
+            )
+        )
         response = model.generate_content(prompt)
-        invoicejsontext = response.text[8:-4]  # Remove markdown-like formatting
+        logging.info(f"Raw Gemini response: {response.text!r}")
+
+        invoicejsontext = response.text.strip()
+        invoicejsontext = invoicejsontext.lstrip("`\ufeff\r\n ").rstrip("`\r\n ")
+        
+        start = invoicejsontext.find("{")
+        end   = invoicejsontext.rfind("}")
+        if start == -1 or end == -1 or start >= end:
+            logging.error("Couldn't locate JSON object in response: %r", invoicejsontext)
+            return None
+        invoicejsontext = invoicejsontext[start : end+1]
+        
+        logging.debug("Final JSON payload (repr): %r", invoicejsontext)
+        
         invoicejson = json.loads(invoicejsontext)
 
-        # Save to file
         os.makedirs("/app/data", exist_ok=True)
-        invoices_file = "/app/data/invoices.json"
+        invoices_file = os.path.join("/app/data", "invoices.json")
         try:
             with open(invoices_file, "r") as f:
                 existing_data = json.load(f)
         except FileNotFoundError:
             existing_data = {"invoices": []}
         
-        # Append new invoice data
         existing_data["invoices"].append(invoicejson["invoices"][0])
         with open(invoices_file, "w") as f:
             json.dump(existing_data, f, indent=4)
         logging.info(f"Saved JSON for email {email_id}, attachment {attachment_index}")
 
         return invoicejson
+
+    except json.JSONDecodeError as e:
+        logging.error("JSON decode error for email %s, attachment %s: %s\nPayload repr: %r", email_id, attachment_index, e, invoicejsontext)
+        return None
     except Exception as e:
-        logging.error(f"Error formatting with Gemini: {e}")
+        logging.error("Error processing with Gemini for email %s, attachment %s: %s", email_id, attachment_index, e, exc_info=True)
         return None
 
 def process_message(message, conn):
@@ -217,55 +246,29 @@ def process_message(message, conn):
         sender = data.get("sender", "")
         subject = data.get("subject", "")
 
-        # Load processed emails
-        processed_emails_file = "/app/processed_emails.json"
-        try:
-            with open(processed_emails_file, "r") as f:
-                processed_emails = json.load(f)
-        except FileNotFoundError:
-            processed_emails = []
-
-        # Check if email_id has been processed
-        if email_id in processed_emails:
-            logging.info(f"Skipping email {email_id}: Already processed.")
-            return
-
-        # Ensure invoices directory exists
-        os.makedirs("/app/invoices", exist_ok=True)
-
         for index, attachment in enumerate(data.get("attachments", [])):
-            file_name = attachment["file_name"]
             file_data = base64.b64decode(attachment["file_data"])
-            file_path = f"/app/invoices/{file_name}"
-
-            # Save PDF to disk
-            with open(file_path, "wb") as f:
-                f.write(file_data)
-            logging.info(f"Saved invoice {file_name} from email {email_id} to {file_path}")
-
-            # Perform OCR and format with Gemini
-            text = ocr_pdf(file_path)
+            # Process PDF in memory
+            text = ocr_pdf(file_data)
             invoice_data = format_with_gemini(text, email_id, index)
             if not invoice_data:
-                logging.error(f"Skipping database update for {file_name} due to OCR/Gemini failure.")
+                logging.error(f"Skipping database update for attachment {index} due to OCR/Gemini failure.")
                 continue
 
             # Update database with scanned_data
             combined_key = f"{email_id}_{index}"
-            db_invoice = {
-                "invoice_id": combined_key,
-                "message_id": email_id,
-                "sender": sender,
-                "subject": subject,
-                "scanned_data": invoice_data["invoices"][0]
-            }
-            insert_or_update_invoice(conn, db_invoice)
-
-        # Mark email as processed
-        processed_emails.append(email_id)
-        with open(processed_emails_file, "w") as f:
-            json.dump(processed_emails, f, indent=4)
-        logging.info(f"Marked email {email_id} as processed.")
+            if not check_invoice_exists(conn, combined_key):
+                db_invoice = {
+                    "invoice_id": combined_key,
+                    "message_id": email_id,
+                    "sender": sender,
+                    "subject": subject,
+                    "scanned_data": invoice_data["invoices"][0]
+                }
+                insert_or_update_invoice(conn, db_invoice)
+                logging.info(f"Processed and stored new invoice {combined_key}.")
+            else:
+                logging.info(f"Skipping invoice {combined_key}: Already processed.")
 
     except Exception as e:
         logging.error(f"Error processing message: {e}")
