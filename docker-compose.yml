@@ -76,7 +76,8 @@ services:
       kafka:
         condition: service_healthy
     volumes:
-      - ./email_monitor/token.pickle:/app/token.pickle
+      - ./zoho_api.py:/app/zoho_api.py
+      - ./zoho_auth.py:/app/zoho_auth.py
     ports:
       - "8080:8080"
     environment:
@@ -85,6 +86,12 @@ services:
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
       - AWS_SECRET_KEY=${AWS_SECRET_KEY}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - ZOHO_CLIENT_ID=${ZOHO_CLIENT_ID}
+      - ZOHO_CLIENT_SECRET=${ZOHO_CLIENT_SECRET}
+      - ZOHO_AUTH_CODE=${ZOHO_AUTH_CODE}
+      - ZOHO_REDIRECT_URI=${ZOHO_REDIRECT_URI}
+      - ZOHO_ORGANIZATION_ID=${ZOHO_ORGANIZATION_ID}
+      - ZOHO_REFRESH_TOKEN=${ZOHO_REFRESH_TOKEN}
     networks:
       - kafka-network
 
