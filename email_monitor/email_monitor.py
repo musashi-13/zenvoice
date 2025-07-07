@@ -4,6 +4,7 @@ import time
 import base64
 import logging
 import json
+from threading import Thread
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -26,6 +27,7 @@ KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 KAFKA_INVOICES_TOPIC = "email-invoices"
 KAFKA_LOGS_TOPIC = "logs"
 POLL_INTERVAL = 30
+SENDERS_UPDATE_INTERVAL = 3600  # 1 hour in seconds
 
 # Configure logging to send to Kafka
 class KafkaHandler(logging.Handler):
@@ -96,7 +98,7 @@ def authenticate_gmail():
     return build('gmail', 'v1', credentials=creds)
 
 def fetch_allowed_senders():
-    """Fetch vendor emails from Zoho Books."""
+    """Fetch vendor emails from Zoho Books (called only at initialization or update)."""
     zoho_api = ZohoAPI()
     allowed_senders = zoho_api.get_vendors()
     logger.info(f"Fetched {len(allowed_senders)} allowed senders from Zoho Books")
@@ -104,11 +106,19 @@ def fetch_allowed_senders():
         logger.warning("No vendor emails fetched from Zoho. Using empty list.")
     return allowed_senders
 
+def update_allowed_senders():
+    """Update the allowed senders list every hour in a separate thread."""
+    global allowed_senders
+    while True:
+        logger.info("Updating allowed senders list...")
+        allowed_senders = fetch_allowed_senders()
+        time.sleep(SENDERS_UPDATE_INTERVAL)
+
 def fetch_emails(gmail_service):
     """Fetch unread emails with 'invoice' in subject from allowed senders."""
-    allowed_senders = fetch_allowed_senders()
+    global allowed_senders
     if not allowed_senders:
-        logger.warning("No allowed senders fetched from Zoho. Using empty list.")
+        logger.warning("No allowed senders initialized. Using empty list.")
         allowed_senders = []
     query = "from:(" + " OR ".join(allowed_senders) + ") invoice is:unread"
     try:
@@ -170,11 +180,19 @@ def process_email(gmail_service, message_id):
 
 def main():
     """Main loop to poll for emails and process them."""
+    global allowed_senders
     logger.info("Starting Gmail invoice processor")
     gmail_service = authenticate_gmail()
     if not gmail_service:
         logger.error("Failed to authenticate with Gmail API")
         return
+
+    # Initialize allowed senders
+    allowed_senders = fetch_allowed_senders()
+
+    # Start thread to update allowed senders every hour
+    update_thread = Thread(target=update_allowed_senders, daemon=True)
+    update_thread.start()
 
     while True:
         messages = fetch_emails(gmail_service)
