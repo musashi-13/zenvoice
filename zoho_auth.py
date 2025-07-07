@@ -118,7 +118,6 @@ class ZohoAuth:
                 self.refresh_token = tokens["refresh_token"]
                 self.token_expiry = tokens["expiry"]
             logger.info(f"Loaded tokens from {self.token_file}")
-            print(f"Refresh Token: {self.refresh_token}")
 
     def get_access_token(self):
         """Return the current access token, refreshing or exchanging if necessary."""

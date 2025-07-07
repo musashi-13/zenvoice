@@ -78,6 +78,7 @@ services:
     volumes:
       - ./zoho_api.py:/app/zoho_api.py
       - ./zoho_auth.py:/app/zoho_auth.py
+      - ./zoho_token.pickle:/app/zoho_token.pickle
     ports:
       - "8080:8080"
     environment:
@@ -91,7 +92,6 @@ services:
       - ZOHO_AUTH_CODE=${ZOHO_AUTH_CODE}
       - ZOHO_REDIRECT_URI=${ZOHO_REDIRECT_URI}
       - ZOHO_ORGANIZATION_ID=${ZOHO_ORGANIZATION_ID}
-      - ZOHO_REFRESH_TOKEN=${ZOHO_REFRESH_TOKEN}
     networks:
       - kafka-network
 
