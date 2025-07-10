@@ -139,6 +139,26 @@ services:
     networks:
       - kafka-network
 
+
+  express-backend:
+    build:
+      context: ./express-backend
+      dockerfile: Dockerfile
+    container_name: express-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/invoice-pipeline?schema=public
+      - PORT=4000
+    volumes:
+      - ./express-backend/src/public:/app/public
+    networks:
+      - kafka-network
+
+
 volumes:
   kafka_data:
     driver: local

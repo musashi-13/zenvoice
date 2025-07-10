@@ -3,3 +3,6 @@ credentials.json
 token.json
 zoho_token.pickle
 zoho.txt
+node_modules
+dist
+ 

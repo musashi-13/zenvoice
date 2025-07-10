@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS invoice_store (
     invoice_id UUID PRIMARY KEY,
-    message_id VARCHAR(255) NOT NULL,
+    message_id VARCHAR(255) NOT NULL UNIQUE,
     sender VARCHAR(255) NOT NULL,
     subject TEXT,
     created_at TIMESTAMP NOT NULL,

@@ -2,6 +2,7 @@ import json
 import base64
 import logging
 import os
+import uuid
 import fitz
 import pytesseract
 from PIL import Image
@@ -9,7 +10,7 @@ import io
 import google.generativeai as genai
 import psycopg2
 from psycopg2.extras import Json
-from datetime import datetime
+from datetime import datetime, timezone
 from kafka import KafkaConsumer
 from dotenv import load_dotenv
 
@@ -57,52 +58,74 @@ def init_postgres():
         logging.error(f"Failed to connect to PostgreSQL: {e}")
         raise
 
-def check_invoice_exists(conn, invoice_id):
-    """Check if an invoice with the given invoice_id exists."""
+def check_invoice_exists(conn, combined_key):
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM invoice_store WHERE invoice_id = %s", (invoice_id,))
+            cur.execute("SELECT 1 FROM invoice_store WHERE message_id = %s", (combined_key,))
             return cur.fetchone() is not None
     except Exception as e:
         logging.error(f"Error checking invoice existence: {e}")
+        conn.rollback()
         return False
 
-def insert_or_update_invoice(conn, invoice_data):
-    """Insert or update the invoice in the database based on invoice_id."""
-    invoice_id = invoice_data["invoice_id"]
-    exists = check_invoice_exists(conn, invoice_id)
+def insert_invoice(conn, db_invoice):
+    """Insert a new invoice into the database."""
     try:
         with conn.cursor() as cur:
-            if exists:
-                cur.execute("""
+            invoice_id = str(uuid.uuid4()) 
+            cur.execute(
+                """
+                INSERT INTO invoice_store (
+                    invoice_id, message_id, sender, subject, created_at, updated_at, 
+                    s3_url, zoho_po_number, zoho_bill_number, scanned_data
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    invoice_id,
+                    db_invoice["combined_key"],
+                    db_invoice["sender"],
+                    db_invoice["subject"],
+                    datetime.now(timezone.utc),
+                    datetime.now(timezone.utc),
+                    "", "", "", Json(db_invoice["scanned_data"])
+                )
+            )
+            logging.info(f"Inserted new invoice {db_invoice['combined_key']}.")
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Error inserting invoice {db_invoice['combined_key']}: {e}")
+        conn.rollback()
+        
+def update_invoice(conn, combined_key, invoice_data):
+    """Update an existing invoice by adding scanned_data if it's empty or null, otherwise skip."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT invoice_id, scanned_data 
+                FROM invoice_store 
+                WHERE message_id = %s 
+                AND (scanned_data IS NULL OR scanned_data = '{}'::jsonb)
+                """,
+                (combined_key,)
+            )
+            existing_row = cur.fetchone()
+            if existing_row:
+                invoice_id, _ = existing_row
+                cur.execute(
+                    """
                     UPDATE invoice_store
                     SET scanned_data = %s, updated_at = %s
                     WHERE invoice_id = %s
-                """, (
-                    Json(invoice_data["scanned_data"]),
-                    datetime.utcnow(),
-                    invoice_id
-                ))
-                logging.info(f"Updated invoice {invoice_id} with scanned_data.")
+                    """,
+                    (Json(invoice_data), datetime.now(timezone.utc), invoice_id)
+                )
+                logging.info(f"Updated invoice {invoice_id} with new scanned_data.")
             else:
-                cur.execute("""
-                    INSERT INTO invoice_store (
-                        invoice_id, message_id, sender, subject, created_at, updated_at, 
-                        s3_url, zoho_po_number, zoho_bill_number, scanned_data
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    invoice_id,
-                    invoice_data["message_id"],
-                    invoice_data["sender"],
-                    invoice_data["subject"],
-                    datetime.utcnow(),
-                    datetime.utcnow(),
-                    "", "", "", Json(invoice_data["scanned_data"])
-                ))
-                logging.info(f"Inserted new invoice {invoice_id}.")
-        conn.commit()
+                logging.info(f"Skipping update for {combined_key}: scanned_data exists.")
+            conn.commit()
     except Exception as e:
-        logging.error(f"Error inserting/updating invoice {invoice_id}: {e}")
+        logging.error(f"Error updating invoice for {combined_key}: {e}")
         conn.rollback()
 
 def ocr_pdf(pdf_data):
@@ -128,10 +151,6 @@ def ocr_pdf(pdf_data):
         raise
     return text
 
-import re
-
-import re
-
 def format_with_gemini(data, email_id, attachment_index):
     """Format extracted text into structured JSON using Gemini."""
     prompt = """
@@ -139,7 +158,8 @@ def format_with_gemini(data, email_id, attachment_index):
 
     I'll provide the text extracted from an invoice. Make sure you store the PO No. as bill_number in the extracted json. Please extract the following information and format it as JSON:
     - Vendor name (company issuing the invoice)
-    - PO number, not the invoice number
+    - Vendor's invoice number
+    - Purhcase Order number,
     - Bill/invoice date
     - Due date or payment terms
     - Bill-to information (name and address)
@@ -156,36 +176,31 @@ def format_with_gemini(data, email_id, attachment_index):
 
     Please return the data in this exact JSON structure:
     {
-      "invoices": [
+        "vendor_name": "",
+        "invoice_number": "",
+        "po_number": "",
+        "bill_date": "",
+        "due_date": "",
+        "items": [
         {
-          "vendor_name": "",
-          "bill_number": "",
-          "bill_date": "",
-          "due_date": "",
-          "items": [
-            {
-              "item_details": "",
-              "account": "",
-              "quantity": 0,
-              "rate": 0,
-              "amount": 0
-            }
-          ],
-          "sub_total": 0,
-          "discount": {
-            "percentage": 0,
+            "item_details": "",
+            "quantity": 0,
+            "rate": 0,
             "amount": 0
-          },
-          "tax": {
-            "tds_percent": "0",
-            "tds_amount": 0,
-            "tds_tax_name": ""
-          },
-          "total": 0
         }
-      ]
+        ],
+        "sub_total": 0,
+        "discount": {
+        "percentage": 0,
+        "amount": 0
+        },
+        "tax": {
+        "tds_percent": "0",
+        "tds_amount": 0,
+        "tds_tax_name": ""
+        },
+        "total": 0
     }
-
     Don't include any explanations or markdown in your response, just the clean JSON output.
     """
     try:
@@ -204,17 +219,9 @@ def format_with_gemini(data, email_id, attachment_index):
         print(f"Response: {response.text}")
 
         invoicejsontext = response.text[8:-4]
-        print(invoicejsontext)
-        invoicejson = json.loads(invoicejsontext)
+        print(f"Formatted Data: {invoicejsontext}")
 
-        os.makedirs("/app/data", exist_ok=True)
-        invoices_file = os.path.join("/app/data", "invoices.json")
-        with open(invoices_file, "w") as json_file:
-            json.dump(invoicejson, json_file, indent=4) 
-        
-        logging.info(f"Saved JSON for email {email_id}, attachment {attachment_index}")
-
-        return invoicejson
+        return invoicejsontext
 
     except json.JSONDecodeError as e:
         logging.error("JSON decode error for email %s, attachment %s: %s\nPayload repr: %r", email_id, attachment_index, e, invoicejsontext)
@@ -237,23 +244,24 @@ def process_message(message, conn):
             text = ocr_pdf(file_data)
             invoice_data = format_with_gemini(text, email_id, index)
             if not invoice_data:
-                logging.error(f"Skipping database update for attachment {index} due to OCR/Gemini failure.")
+                logging.error(f"Skipping database update for {email_id} attachment {index} due to OCR/Gemini failure.")
                 continue
 
             # Update database with scanned_data
             combined_key = f"{email_id}_{index}"
+            
+            print(f"Processing invoice for email {email_id}, attachment {index} with combined key {combined_key}")
+            
             if not check_invoice_exists(conn, combined_key):
                 db_invoice = {
-                    "invoice_id": combined_key,
-                    "message_id": email_id,
+                    "combined_key": combined_key,
                     "sender": sender,
                     "subject": subject,
-                    "scanned_data": invoice_data["invoices"][0]
+                    "scanned_data": invoice_data
                 }
-                insert_or_update_invoice(conn, db_invoice)
-                logging.info(f"Processed and stored new invoice {combined_key}.")
+                insert_invoice(conn, db_invoice)
             else:
-                logging.info(f"Skipping invoice {combined_key}: Already processed.")
+                update_invoice(conn, combined_key, invoice_data)
 
     except Exception as e:
         logging.error(f"Error processing message: {e}")
