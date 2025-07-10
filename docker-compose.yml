@@ -128,6 +128,10 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    volumes:
+      - ./zoho_api.py:/app/zoho_api.py
+      - ./zoho_auth.py:/app/zoho_auth.py
+      - ./zoho_token.pickle:/app/zoho_token.pickle
     environment:
       - PYTHONUNBUFFERED=1
       - POSTGRES_HOST=postgres
@@ -136,6 +140,11 @@ services:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ZOHO_CLIENT_ID=${ZOHO_CLIENT_ID}
+      - ZOHO_CLIENT_SECRET=${ZOHO_CLIENT_SECRET}
+      - ZOHO_AUTH_CODE=${ZOHO_AUTH_CODE}
+      - ZOHO_REDIRECT_URI=${ZOHO_REDIRECT_URI}
+      - ZOHO_ORGANIZATION_ID=${ZOHO_ORGANIZATION_ID}
     networks:
       - kafka-network
 

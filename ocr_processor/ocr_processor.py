@@ -13,7 +13,7 @@ from psycopg2.extras import Json
 from datetime import datetime, timezone
 from kafka import KafkaConsumer
 from dotenv import load_dotenv
-
+from invoice_validator import match_invoice_with_purchase_order
 # Load environment variables
 load_dotenv()
 
@@ -262,7 +262,12 @@ def process_message(message, conn):
                 insert_invoice(conn, db_invoice)
             else:
                 update_invoice(conn, combined_key, invoice_data)
-
+            validation_result = match_invoice_with_purchase_order(invoice_data)
+            if validation_result["match"]:
+                print(f"Invoice {combined_key} matches Purchase Order {validation_result['purchase_order_id']}")
+            else:
+                print(f"Invoice {combined_key} does not match Purchase Order {validation_result['purchase_order_id']}: {validation_result['message']}")
+                print(f"Differences: {validation_result['differences']}")
     except Exception as e:
         logging.error(f"Error processing message: {e}")
 

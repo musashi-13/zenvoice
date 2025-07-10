@@ -1,5 +1,6 @@
 import requests
 import pickle
+import json
 
 # File where tokens are stored
 token_file = "zoho_token.pickle"
@@ -26,23 +27,27 @@ region = "in"  # Your current region
 # Base URL
 base_url = f"https://www.zohoapis.{region}/books/v3"
 
-# Test endpoints
-endpoints = [
-    f"{base_url}/organizations",  # List all organizations
-    f"{base_url}/contacts",  # List all contacts
-    f"{base_url}/contacts?contact_type=vendor"  # List vendors
-]
+# Endpoint for fetching purchase orders
+purchase_orders_endpoint = f"{base_url}/purchaseorders?purchaseorder_number=PO-00001"
+po_details_endpoint = f"{base_url}/purchaseorders/2702270000000036043"
+
 
 headers = {
     "Authorization": f"Zoho-oauthtoken {access_token}",
     "Content-Type": "application/json"
 }
 
-for endpoint in endpoints:
-    print(f"\nTesting URL: {endpoint}")
-    try:
-        response = requests.get(endpoint, headers=headers)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.text}")
-    except requests.exceptions.RequestException as e:
-        print(f"Error: {e}")
+# Fetch purchase orders and dump JSON
+try:
+    params = {
+        "organization_id": organization_id
+    }
+    response = requests.get(po_details_endpoint, headers=headers, params=params)
+    response.raise_for_status()  # Raise an exception for bad status codes
+
+    data = response.json()
+    print(json.dumps(data, indent=4))  # Dump the raw JSON response to the console
+except requests.exceptions.RequestException as e:
+    print(f"Error fetching purchase orders: {e}")
+except ValueError as e:
+    print(f"Error parsing JSON response: {e}")
