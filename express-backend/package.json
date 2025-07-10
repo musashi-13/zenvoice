@@ -13,12 +13,14 @@
   "license": "ISC",
   "packageManager": "pnpm@10.12.4",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
-    "pg": "^8.16.3",
-    "@aws-sdk/client-s3": "^3.600.0"
+    "pg": "^8.16.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.12",
     "@types/pg": "^8.15.4",
