@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Dict, List, Optional
 from zoho_api import ZohoAPI
 
@@ -6,7 +7,9 @@ zoho_api = ZohoAPI()
 
 def match_invoice_with_purchase_order(scanned_data: Dict) -> Dict:
     """Match scanned invoice data with the corresponding purchase order and return validation result."""
+
     po_number = scanned_data.get("po_number")
+    
     if not po_number:
         return {"match": False, "message": "PO number not found in scanned data", "purchase_order_id": None}
 
@@ -20,7 +23,9 @@ def match_invoice_with_purchase_order(scanned_data: Dict) -> Dict:
     if not purchase_order_details:
         return {"match": False, "message": f"No details found for PO ID {purchase_order_id}", "purchase_order_id": purchase_order_id}
 
+    print("Purchase Order Details fetched from zoho: ", json.dumps(purchase_order_details, indent=4))
     vendor_name_po = purchase_order_details.get("vendor_name", "")
+    vendor_name_po = re.sub(r'\.', '', vendor_name_po)
     total_po = float(purchase_order_details.get("total", 0))
     total_quantity_po = float(purchase_order_details.get("total_quantity", 0))
     line_items_po = purchase_order_details.get("line_items", [])
@@ -36,7 +41,7 @@ def match_invoice_with_purchase_order(scanned_data: Dict) -> Dict:
     differences = []
 
     # Compare vendor name (note: may need to fetch from get_purchase_order_by_number if not in details)
-    if vendor_name_po != vendor_name_scanned:
+    if re.sub(r'\.', '',vendor_name_po) != vendor_name_scanned:
         match = False
         differences.append(f"Vendor name mismatch: PO ({vendor_name_po}) vs Scanned ({vendor_name_scanned})")
 
@@ -51,7 +56,7 @@ def match_invoice_with_purchase_order(scanned_data: Dict) -> Dict:
         differences.append(f"Total quantity mismatch: PO ({total_quantity_po}) vs Scanned ({total_quantity_scanned})")
 
     # Compare line items
-    line_items_po_dict = {item.get("description"): item for item in line_items_po}
+    line_items_po_dict = {re.sub(r'[\u2013] ', '', item.get("description")): item for item in line_items_po}
     for item_scanned in items_scanned:
         description = item_scanned.get("item_details")
         if description in line_items_po_dict:

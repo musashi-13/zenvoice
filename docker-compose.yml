@@ -18,13 +18,16 @@ services:
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_CFG_NUM_PARTITIONS=3
+      - LOGGING_LEVEL=WARN
+      - KAFKA_CFG_LOG4J_ROOT_LOGLEVEL=WARN
+      - KAFKA_CFG_LOG4J_LOGGERS=org.apache.kafka=WARN,kafka=WARN,kafka.cluster=WARN
     volumes:
       - kafka_data:/bitnami/kafka
     healthcheck:
       test: ["CMD", "/opt/bitnami/kafka/bin/kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 3
     networks:
       - kafka-network
 

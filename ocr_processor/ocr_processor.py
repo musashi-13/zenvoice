@@ -215,13 +215,9 @@ def format_with_gemini(data, email_id, attachment_index):
             )
         )
         response = model.generate_content(prompt)
-
-        print(f"Response: {response.text}")
-
         invoicejsontext = response.text[8:-4]
-        print(f"Formatted Data: {invoicejsontext}")
-
-        return invoicejsontext
+        invoice_json = json.loads(invoicejsontext) 
+        return invoice_json
 
     except json.JSONDecodeError as e:
         logging.error("JSON decode error for email %s, attachment %s: %s\nPayload repr: %r", email_id, attachment_index, e, invoicejsontext)
@@ -250,7 +246,7 @@ def process_message(message, conn):
             # Update database with scanned_data
             combined_key = f"{email_id}_{index}"
             
-            print(f"Processing invoice for email {email_id}, attachment {index} with combined key {combined_key}")
+            logging.info(f"Processing invoice for email {email_id}, attachment {index} with combined key {combined_key}")
             
             if not check_invoice_exists(conn, combined_key):
                 db_invoice = {
@@ -262,9 +258,10 @@ def process_message(message, conn):
                 insert_invoice(conn, db_invoice)
             else:
                 update_invoice(conn, combined_key, invoice_data)
+
             validation_result = match_invoice_with_purchase_order(invoice_data)
             if validation_result["match"]:
-                print(f"Invoice {combined_key} matches Purchase Order {validation_result['purchase_order_id']}")
+                print(f"Invoice email attachment {combined_key} matches Purchase Order {validation_result['purchase_order_id']}")
             else:
                 print(f"Invoice {combined_key} does not match Purchase Order {validation_result['purchase_order_id']}: {validation_result['message']}")
                 print(f"Differences: {validation_result['differences']}")

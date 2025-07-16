@@ -29,7 +29,7 @@ base_url = f"https://www.zohoapis.{region}/books/v3"
 
 # Endpoint for fetching purchase orders
 purchase_orders_endpoint = f"{base_url}/purchaseorders?purchaseorder_number=PO-00001"
-po_details_endpoint = f"{base_url}/purchaseorders/2702270000000036043"
+#po_details_endpoint = f"{base_url}/purchaseorders/2702270000000036043"
 
 
 headers = {
@@ -42,7 +42,7 @@ try:
     params = {
         "organization_id": organization_id
     }
-    response = requests.get(po_details_endpoint, headers=headers, params=params)
+    response = requests.get(purchase_orders_endpoint, headers=headers, params=params)
     response.raise_for_status()  # Raise an exception for bad status codes
 
     data = response.json()
