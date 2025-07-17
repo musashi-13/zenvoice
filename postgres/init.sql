@@ -9,4 +9,5 @@ CREATE TABLE IF NOT EXISTS invoice_store (
     zoho_po_number VARCHAR(255),
     zoho_bill_number VARCHAR(255),
     scanned_data JSONB
+    stage INT NOT NULL DEFAULT 0,
 );

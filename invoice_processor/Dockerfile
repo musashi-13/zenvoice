@@ -10,9 +10,10 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements.txt .
 COPY invoice_validator.py .
+COPY invoice_scanner.py .
 
 RUN pip install -r requirements.txt
 
-COPY ocr_processor.py .
+COPY invoice_processor.py .
 
-CMD ["python", "ocr_processor.py"]
+CMD ["python", "invoice_processor.py"]
