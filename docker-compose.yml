@@ -121,11 +121,11 @@ services:
     networks:
       - kafka-network
 
-  ocr-processor:
+  invoice-processor:
     build:
-      context: ./ocr_processor
+      context: ./invoice_processor
       dockerfile: Dockerfile
-    container_name: ocr-processor
+    container_name: invoice-processor
     depends_on:
       kafka:
         condition: service_healthy

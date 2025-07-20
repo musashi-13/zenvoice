@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Dict, List, Optional
+from typing import Dict
 from zoho_api import ZohoAPI
 
 zoho_api = ZohoAPI()
@@ -80,12 +80,19 @@ def match_invoice_with_purchase_order(scanned_data: Dict) -> Dict:
         else:
             match = False
             differences.append(f"Item {description} not found in purchase order")
+    bill = {}
+    if match:
+        bill = zoho_api.create_bill_from_purchase_order(purchase_order_id)
+        if bill and bill.get("bill_id"):
+            print(f"Created draft bill {bill['bill_id']} for PO {purchase_order_id}")
+        else:
+            print(f"Failed to create draft bill for PO {purchase_order_id}")
 
-    # Prepare validation result with all purchase order details
     message = "Match successful" if match else "Match failed" + (f" due to: {', '.join(differences)}" if differences else "")
     return {
         "match": match,
         "message": message,
+        "bill": bill,
         "purchase_order_id": purchase_order_id,
         "differences": differences if not match else [],
         "purchase_order_details": purchase_order_details  # Include all specified fields for future use

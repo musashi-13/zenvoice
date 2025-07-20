@@ -157,9 +157,22 @@ def process_message(message, conn):
             validation_result = match_invoice_with_purchase_order(invoice_data)
             if validation_result["match"]:
                 print(f"Invoice email attachment {combined_key} matches Purchase Order {validation_result['purchase_order_id']}")
+                bill = validation_result["bill"]
+                if bill and bill.get("bill_id"):
+                    # Update database with zoho_bill_number
+                    cursor = conn.cursor()
+                    update_query = """
+                        UPDATE invoice_store
+                        SET zoho_bill_number = %s,
+                            updated_at = %s
+                        WHERE message_id = %s
+                    """
+                    cursor.execute(update_query, (bill["bill_id"], datetime.now(), combined_key))
+                    conn.commit()
+                    logging.info(f"Updated database with Zoho bill ID {bill['bill_id']} for {combined_key}")
             else:
-                print(f"Invoice {combined_key} does not match Purchase Order {validation_result['purchase_order_id']}: {validation_result['message']}")
-                print(f"Differences: {validation_result['differences']}")
+                logging.error(f"Invoice {combined_key} does not match Purchase Order {validation_result['purchase_order_id']}: {validation_result['message']}")
+                logging.error(f"Differences: {validation_result['differences']}")
     except Exception as e:
         logging.error(f"Error processing message: {e}")
 

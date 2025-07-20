@@ -1,5 +1,6 @@
 import requests
 import logging
+from typing import Dict
 from zoho_auth import ZohoAuth
 
 # Configure logging
@@ -127,6 +128,73 @@ class ZohoAPI:
             logger.error(f"Unexpected error fetching details for PO {purchaseorder_id}: {e}")
             print(f"Unexpected exception details: {str(e)}")
             return {}
+        
+    def create_bill_from_purchase_order(self, purchaseorder_id: str) -> Dict:
+        """Fetch PO data and create a draft bill."""
+        url = f"{self.base_url}/bills/editpage/frompurchaseorders?purchaseorder_ids={purchaseorder_id}&organization_id={self.organization_id}"
+        try:
+            response = requests.post(url, headers=self.headers)
+            response.raise_for_status()
+            bill_data = response.json().get("purchaseorder", {})
+            filtered_bill_data = {
+                "purchaseorder_ids": [purchaseorder_id],
+                "vendor_id": bill_data.get("vendor_id"),
+                "bill_number": f"{bill_data.get('reference_number', purchaseorder_id)}",
+                "date": bill_data.get("date"),
+                "due_date": bill_data.get("due_date"),
+                "currency_id": bill_data.get("currency_id"),
+                "line_items": bill_data.get("line_items", []),
+                "reference_number": bill_data.get("reference_number"),
+                "status": "draft"
+            }
+            create_url = f"{self.base_url}/bills?organization_id={self.organization_id}"
+            create_response = requests.post(create_url, headers=self.headers, json=filtered_bill_data)
+            create_response.raise_for_status()
+            data = create_response.json()
+            logger.info(f"Created draft bill for PO {purchaseorder_id}: {data.get('bill').get('bill_id')}")
+            return data.get("bill", {})
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error creating bill for PO {purchaseorder_id}: {e.response.status_code} - {e.response.text}")
+            return {}
+
+    def open_bill(self, bill_id: str) -> bool:
+        """Update the bill status to 'open' in Zoho Books."""
+        url = f"{self.base_url}/bills/{bill_id}/status/open?organization_id={self.organization_id}"
+        try:
+            response = requests.post(url, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"Opened bill {bill_id}: {data.get('message')}")
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error opening bill {bill_id}: {e.response.status_code} - {e.response.text}")
+            return False
+        
+    def submit_bill_for_approval(self, bill_id: str) -> bool:
+        """Submit a draft bill for pending approval."""
+        url = f"{self.base_url}/bills/{bill_id}/submit?organization_id={self.organization_id}"
+        try:
+            response = requests.post(url, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"Submitted bill {bill_id} for approval: {data.get('message')}")
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error submitting bill {bill_id} for approval: {e.response.status_code} - {e.response.text}")
+            return False
+
+    def approve_bill(self, bill_id: str) -> bool:
+        """Approve a bill after internal approval process."""
+        url = f"{self.base_url}/bills/{bill_id}/approve?organization_id={self.organization_id}"
+        try:
+            response = requests.post(url, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"Approved bill {bill_id}: {data.get('message')}")
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error approving bill {bill_id}: {e.response.status_code} - {e.response.text}")
+            return False
 
 if __name__ == "__main__":
     zoho = ZohoAPI()
