@@ -165,6 +165,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://user:password@postgres:5432/invoice-pipeline?schema=public
       - PORT=4000
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
     volumes:
       - ./express-backend/src/public:/app/public
     networks:

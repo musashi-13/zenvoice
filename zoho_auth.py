@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class ZohoAuth:
@@ -15,8 +15,7 @@ class ZohoAuth:
         self.client_id = os.getenv("ZOHO_CLIENT_ID")
         self.client_secret = os.getenv("ZOHO_CLIENT_SECRET")
         self.organization_id = os.getenv("ZOHO_ORGANIZATION_ID")
-        #Remove this in the future
-        self.auth_code = os.getenv("ZOHO_AUTH_CODE")
+
         self.refresh_token = None
         self.access_token = None
         self.token_expiry = None
@@ -33,11 +32,8 @@ class ZohoAuth:
             self.refresh_or_exchange_tokens()
 
     def get_auth_code(self):
-        """Prompt user to get authorization code manually or use env variable."""
-        if self.auth_code:
-            logger.info("Using auth code from environment variable ZOHO_AUTH_CODE.")
-            return self.auth_code
-        logger.info("Please generate an authorization code manually from the Zoho Developer Console:")
+        """Prompt user to enter authorization code manually."""
+        logger.debug("Please generate an authorization code manually from the Zoho Developer Console:")
         return input("Enter the new auth code: ")
 
     def exchange_code_for_tokens(self, auth_code):
@@ -58,13 +54,13 @@ class ZohoAuth:
             self.save_tokens()
             logger.info("Successfully exchanged auth code for tokens.")
         else:
-            logger.error(f"Failed to exchange code: {response.status_code} - {response.text}")
+            logger.fatal(f"Failed to exchange code: {response.status_code} - {response.text}")
             raise Exception("Token exchange failed.")
 
     def refresh_tokens(self):
         """Refresh access token using refresh token."""
         if not self.refresh_token:
-            logger.error("No refresh token available. Please provide an auth code.")
+            logger.fatal("No refresh token available. Please provide an auth code.")
             return False
         url = f"https://accounts.zoho.in/oauth/v2/token"
         data = {
@@ -83,7 +79,7 @@ class ZohoAuth:
             logger.info("Successfully refreshed access token.")
             return True
         else:
-            logger.error(f"Failed to refresh token: {response.status_code} - {response.text}. Re-authentication required.")
+            logger.fatal(f"Failed to refresh token: {response.status_code} - {response.text}. Re-authentication required.")
             return False
 
     def refresh_or_exchange_tokens(self):
@@ -124,11 +120,15 @@ class ZohoAuth:
         if self.is_token_expired():
             self.refresh_or_exchange_tokens()
         return self.access_token
+    
+    def refresh_on_401(self):
+        if self.refresh_tokens():
+            return self.access_token
+        raise Exception("Failed to refresh token after 401. Re-authentication required.")
 
 if __name__ == "__main__":
     try:
         auth = ZohoAuth()
         token = auth.get_access_token()
-        print(f"Current access token: {token}")
     except Exception as e:
-        logger.error(f"Authentication error: {e}")
+        logger.fatal(f"Authentication error: {e}")

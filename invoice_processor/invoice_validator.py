@@ -7,7 +7,6 @@ zoho_api = ZohoAPI()
 
 def match_invoice_with_purchase_order(scanned_data: Dict) -> Dict:
     """Match scanned invoice data with the corresponding purchase order and return validation result."""
-
     po_number = scanned_data.get("po_number")
     
     if not po_number:

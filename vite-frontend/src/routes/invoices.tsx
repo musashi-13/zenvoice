@@ -47,15 +47,15 @@ function RouteComponent() {
     }
   }
 
-  const fetchPresignedUrl = async (invoiceId: string) => {
-    try {
-      const res = await fetch(`http://localhost:4000/api/invoices/${invoiceId}/presign`)
-      const json = await res.json()
-      window.open(json.presignedUrl, '_blank')
-    } catch (err) {
-      console.error('Failed to fetch presigned URL', err)
-    }
+  const fetchPresignedUrl = async (s3_url: string) => {
+  try {
+    const res = await fetch(`http://localhost:4000/api/s3/fetch?s3_url=${encodeURIComponent(s3_url)}`);
+    const json = await res.json();
+    window.open(json.presignedUrl, '_blank');
+  } catch (err) {
+    console.error('Failed to fetch presigned URL', err);
   }
+};
 
   useEffect(() => {
     fetchData(page)
@@ -106,11 +106,13 @@ function RouteComponent() {
     },
     {
       header: 'PDF',
+      accessorKey: 's3_url',
       cell: ({ row }) => (
         <Button
-          onClick={() => fetchPresignedUrl(row.original.invoice_id)}
+          onClick={() => fetchPresignedUrl(row.original.s3_url)}
           variant="secondary"
           size="sm"
+          className='cursor-pointer'
         >
           <Download className="w-4 h-4 mr-1" />
           Download

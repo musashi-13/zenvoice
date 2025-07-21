@@ -10,3 +10,12 @@ CREATE TABLE IF NOT EXISTS invoice_store (
     zoho_bill_number VARCHAR(255),
     scanned_data JSONB
 );
+
+CREATE TABLE IF NOT EXISTS receipts (
+    receipt_id UUID PRIMARY KEY,
+    receipt_number VARCHAR(255) NOT NULL,
+    warehouse_id VARCHAR(255) NOT NULL,
+    emp_id VARCHAR(255) NOT NULL,
+    zoho_po_number VARCHAR(255),
+    scanned_data JSONB
+);

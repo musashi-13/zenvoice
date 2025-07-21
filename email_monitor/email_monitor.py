@@ -53,7 +53,7 @@ class KafkaHandler(logging.Handler):
 # Initialize logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s %(levelname)s:%(message)s'
+    format='%(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ def authenticate_gmail():
             creds = pickle.load(token)
     if not creds or not creds.valid:
         if not os.path.exists(CREDENTIALS_FILE):
-            logger.error(f"{CREDENTIALS_FILE} not found")
+            logger.fatal(f"{CREDENTIALS_FILE} not found") 
             return None
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -110,9 +110,10 @@ def update_allowed_senders():
     """Update the allowed senders list every hour in a separate thread."""
     global allowed_senders
     while True:
+        time.sleep(SENDERS_UPDATE_INTERVAL)
         logger.info("Updating allowed senders list...")
         allowed_senders = fetch_allowed_senders()
-        time.sleep(SENDERS_UPDATE_INTERVAL)
+        
 
 def fetch_emails(gmail_service):
     """Fetch unread emails with 'invoice' in subject from allowed senders."""

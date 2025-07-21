@@ -42,7 +42,7 @@ try:
     params = {
         "organization_id": organization_id
     }
-    response = requests.get(po_billed_endpoint, headers=headers, params=params)
+    response = requests.get(purchase_orders_endpoint, headers=headers, params=params)
     response.raise_for_status()  # Raise an exception for bad status codes
 
     data = response.json()

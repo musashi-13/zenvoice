@@ -153,7 +153,6 @@ def process_message(message, conn):
                 insert_invoice(conn, db_invoice)
             else:
                 update_invoice(conn, combined_key, invoice_data)
-
             validation_result = match_invoice_with_purchase_order(invoice_data)
             if validation_result["match"]:
                 print(f"Invoice email attachment {combined_key} matches Purchase Order {validation_result['purchase_order_id']}")
