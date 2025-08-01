@@ -1,9 +1,0 @@
-{
-  "access_token": "1000.62e2d354ea3ed000c92f875e3ac97175.370a197ba5bc5ea956934578ad0d2f61",
-  "refresh_token": "1000.8e4baae18f4630b2422464cb8f96404e.6d4d8633c24d4669fe7209b8051d021e",
-  "expires_in": 3600,
-  "expiry_time": 1754049149149,
-  "scope": "ZohoBooks.fullaccess.ALL",
-  "api_domain": "https://www.zohoapis.in",
-  "token_type": "Bearer"
-}
