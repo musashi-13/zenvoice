@@ -3,7 +3,7 @@ import pool from '../db/db';
 import { zohoApiService } from './zoho-auth';
 
 interface ReceiptItem {
-  item_details: string;
+  name: string;
   quantity: number;
 }
 
@@ -20,11 +20,11 @@ interface ReceiptPayload {
 const subtractItems = (original: Map<string, number>, received: ReceiptItem[]) => {
   const remaining = new Map(original);
   for (const item of received) {
-    const currentQty = remaining.get(item.item_details) || 0;
+    const currentQty = remaining.get(item.name) || 0;
     if (currentQty < item.quantity) {
-      throw new Error(`Over-delivery for item "${item.item_details}". Received ${item.quantity}, but only ${currentQty} were expected.`);
+      throw new Error(`Over-delivery for item "${item.name}". Received ${item.quantity}, but only ${currentQty} were expected.`);
     }
-    remaining.set(item.item_details, currentQty - item.quantity);
+    remaining.set(item.name, currentQty - item.quantity);
   }
   return remaining;
 };
@@ -75,12 +75,13 @@ export const validateAndProcessReceipt = async (payload: ReceiptPayload) => {
       // No entry, fetch from Zoho for the first time
       console.log(`Decrementor cache miss for PO ${po_number}. Fetching from Zoho.`);
       const poDetails = await zohoApiService.getPurchaseOrderDetailsByNumber(po_number);
+      console.log(`Fetched PO details from Zoho:`, poDetails);
       if (!poDetails || !poDetails.line_items) {
         throw new Error(`Could not fetch purchase order details for PO ${po_number} from Zoho.`);
       }
 
       const originalItemsMap = new Map<string, number>(
-        poDetails.line_items.map(item => [item.description, Number(item.quantity)])
+        poDetails.line_items.map(item => [item.description.trim(), Number(item.quantity)])
       );
       
       remainingItemsMap = subtractItems(originalItemsMap, items);

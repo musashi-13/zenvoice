@@ -2,7 +2,7 @@
 credentials.json
 token.json
 zoho_token.pickle
-zoho_token.json
+zoho_tokens.json
 zoho.txt
 node_modules
 .DS_Store

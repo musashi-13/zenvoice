@@ -18,6 +18,7 @@ import { Route as WarehouseReceiptsRouteImport } from './routes/warehouse.receip
 import { Route as WarehouseLoginRouteImport } from './routes/warehouse.login'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo.tanstack-query'
 import { Route as DemoTableRouteImport } from './routes/demo.table'
+import { Route as AdminValidationRouteImport } from './routes/admin.validation'
 import { Route as AdminInvoicesRouteImport } from './routes/admin.invoices'
 import { Route as AdminLayoutRouteImport } from './routes/admin._layout'
 import { Route as WarehouseReceiptsAddRouteImport } from './routes/warehouse.receipts_.add'
@@ -66,6 +67,11 @@ const DemoTableRoute = DemoTableRouteImport.update({
   path: '/demo/table',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminValidationRoute = AdminValidationRouteImport.update({
+  id: '/validation',
+  path: '/validation',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminInvoicesRoute = AdminInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/test': typeof TestRoute
   '/admin': typeof AdminLayoutRoute
   '/admin/invoices': typeof AdminInvoicesRoute
+  '/admin/validation': typeof AdminValidationRoute
   '/demo/table': typeof DemoTableRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/warehouse/login': typeof WarehouseLoginRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/test': typeof TestRoute
   '/admin': typeof AdminIndexRoute
   '/admin/invoices': typeof AdminInvoicesRoute
+  '/admin/validation': typeof AdminValidationRoute
   '/demo/table': typeof DemoTableRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/warehouse/login': typeof WarehouseLoginRoute
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/admin/_layout': typeof AdminLayoutRoute
   '/admin/invoices': typeof AdminInvoicesRoute
+  '/admin/validation': typeof AdminValidationRoute
   '/demo/table': typeof DemoTableRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/warehouse/login': typeof WarehouseLoginRoute
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/test'
     | '/admin'
     | '/admin/invoices'
+    | '/admin/validation'
     | '/demo/table'
     | '/demo/tanstack-query'
     | '/warehouse/login'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/test'
     | '/admin'
     | '/admin/invoices'
+    | '/admin/validation'
     | '/demo/table'
     | '/demo/tanstack-query'
     | '/warehouse/login'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin/_layout'
     | '/admin/invoices'
+    | '/admin/validation'
     | '/demo/table'
     | '/demo/tanstack-query'
     | '/warehouse/login'
@@ -250,6 +262,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoTableRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/validation': {
+      id: '/admin/validation'
+      path: '/validation'
+      fullPath: '/admin/validation'
+      preLoaderRoute: typeof AdminValidationRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/invoices': {
       id: '/admin/invoices'
       path: '/invoices'
@@ -291,12 +310,14 @@ declare module '@tanstack/react-router' {
 interface AdminRouteChildren {
   AdminLayoutRoute: typeof AdminLayoutRoute
   AdminInvoicesRoute: typeof AdminInvoicesRoute
+  AdminValidationRoute: typeof AdminValidationRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminLayoutRoute: AdminLayoutRoute,
   AdminInvoicesRoute: AdminInvoicesRoute,
+  AdminValidationRoute: AdminValidationRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

@@ -28,8 +28,8 @@ CREATE TABLE IF NOT EXISTS validator (
     invoice_log VARCHAR(255),
     receipt_status VARCHAR(50),
     receipt_updated_at TIMESTAMP,
-    receipt_log VARCHAR(255),
-)
+    receipt_log VARCHAR(255)
+);
 
 CREATE TABLE IF NOT EXISTS decrementor (
     po_number VARCHAR(255) PRIMARY KEY,

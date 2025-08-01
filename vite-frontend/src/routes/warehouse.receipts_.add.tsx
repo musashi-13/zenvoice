@@ -47,10 +47,15 @@ function RouteComponent() {
 
             const payload = {
                 ...parsed.data,
+                items: parsed.data.items.map(item => ({
+                    name: item.name.trim(),
+                    quantity: item.quantity,
+                })),
+                receipt_id: crypto.randomUUID(), // Generate a unique ID for the receipt
                 warehouse_id: 'WH001',
                 emp_id: 'EMP001003',
             };
-
+            console.log('Submitting payload:', payload);
             try {
                 const response = await fetch('http://localhost:4000/api/receipts/add', {
                     method: 'POST',
