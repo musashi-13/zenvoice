@@ -167,8 +167,12 @@ services:
       - PORT=4000
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
       - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - ZOHO_CLIENT_ID=${ZOHO_CLIENT_ID}
+      - ZOHO_CLIENT_SECRET=${ZOHO_CLIENT_SECRET}
+      - ZOHO_ORGANIZATION_ID=${ZOHO_ORGANIZATION_ID}
     volumes:
       - ./express-backend/src/public:/app/public
+      - ./express-backend/zoho_tokens.json:/app/zoho_tokens.json
     networks:
       - kafka-network
 

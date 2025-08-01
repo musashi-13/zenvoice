@@ -8,29 +8,52 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
+import { createFileRoute } from '@tanstack/react-router'
+
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TestRouteImport } from './routes/test'
-import { Route as InvoicesRouteImport } from './routes/invoices'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as WarehouseReceiptsRouteImport } from './routes/warehouse.receipts'
+import { Route as WarehouseLoginRouteImport } from './routes/warehouse.login'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo.tanstack-query'
 import { Route as DemoTableRouteImport } from './routes/demo.table'
-import { Route as WarehouseReceiptAddRouteImport } from './routes/warehouse.receipt.add'
+import { Route as AdminInvoicesRouteImport } from './routes/admin.invoices'
+import { Route as AdminLayoutRouteImport } from './routes/admin._layout'
+import { Route as WarehouseReceiptsAddRouteImport } from './routes/warehouse.receipts_.add'
 import { Route as DemoFormSimpleRouteImport } from './routes/demo.form.simple'
 import { Route as DemoFormAddressRouteImport } from './routes/demo.form.address'
 
+const AdminRouteImport = createFileRoute('/admin')()
+
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TestRoute = TestRouteImport.update({
   id: '/test',
   path: '/test',
   getParentRoute: () => rootRouteImport,
 } as any)
-const InvoicesRoute = InvoicesRouteImport.update({
-  id: '/invoices',
-  path: '/invoices',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const WarehouseReceiptsRoute = WarehouseReceiptsRouteImport.update({
+  id: '/warehouse/receipts',
+  path: '/warehouse/receipts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WarehouseLoginRoute = WarehouseLoginRouteImport.update({
+  id: '/warehouse/login',
+  path: '/warehouse/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
@@ -43,9 +66,18 @@ const DemoTableRoute = DemoTableRouteImport.update({
   path: '/demo/table',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WarehouseReceiptAddRoute = WarehouseReceiptAddRouteImport.update({
-  id: '/warehouse/receipt/add',
-  path: '/warehouse/receipt/add',
+const AdminInvoicesRoute = AdminInvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminLayoutRoute = AdminLayoutRouteImport.update({
+  id: '/_layout',
+  getParentRoute: () => AdminRoute,
+} as any)
+const WarehouseReceiptsAddRoute = WarehouseReceiptsAddRouteImport.update({
+  id: '/warehouse/receipts_/add',
+  path: '/warehouse/receipts/add',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DemoFormSimpleRoute = DemoFormSimpleRouteImport.update({
@@ -61,81 +93,114 @@ const DemoFormAddressRoute = DemoFormAddressRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/invoices': typeof InvoicesRoute
   '/test': typeof TestRoute
+  '/admin': typeof AdminLayoutRoute
+  '/admin/invoices': typeof AdminInvoicesRoute
   '/demo/table': typeof DemoTableRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/warehouse/login': typeof WarehouseLoginRoute
+  '/warehouse/receipts': typeof WarehouseReceiptsRoute
+  '/admin/': typeof AdminIndexRoute
   '/demo/form/address': typeof DemoFormAddressRoute
   '/demo/form/simple': typeof DemoFormSimpleRoute
-  '/warehouse/receipt/add': typeof WarehouseReceiptAddRoute
+  '/warehouse/receipts/add': typeof WarehouseReceiptsAddRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/invoices': typeof InvoicesRoute
   '/test': typeof TestRoute
+  '/admin': typeof AdminIndexRoute
+  '/admin/invoices': typeof AdminInvoicesRoute
   '/demo/table': typeof DemoTableRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/warehouse/login': typeof WarehouseLoginRoute
+  '/warehouse/receipts': typeof WarehouseReceiptsRoute
   '/demo/form/address': typeof DemoFormAddressRoute
   '/demo/form/simple': typeof DemoFormSimpleRoute
-  '/warehouse/receipt/add': typeof WarehouseReceiptAddRoute
+  '/warehouse/receipts/add': typeof WarehouseReceiptsAddRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/invoices': typeof InvoicesRoute
   '/test': typeof TestRoute
+  '/admin': typeof AdminRouteWithChildren
+  '/admin/_layout': typeof AdminLayoutRoute
+  '/admin/invoices': typeof AdminInvoicesRoute
   '/demo/table': typeof DemoTableRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/warehouse/login': typeof WarehouseLoginRoute
+  '/warehouse/receipts': typeof WarehouseReceiptsRoute
+  '/admin/': typeof AdminIndexRoute
   '/demo/form/address': typeof DemoFormAddressRoute
   '/demo/form/simple': typeof DemoFormSimpleRoute
-  '/warehouse/receipt/add': typeof WarehouseReceiptAddRoute
+  '/warehouse/receipts_/add': typeof WarehouseReceiptsAddRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/invoices'
     | '/test'
+    | '/admin'
+    | '/admin/invoices'
     | '/demo/table'
     | '/demo/tanstack-query'
+    | '/warehouse/login'
+    | '/warehouse/receipts'
+    | '/admin/'
     | '/demo/form/address'
     | '/demo/form/simple'
-    | '/warehouse/receipt/add'
+    | '/warehouse/receipts/add'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/invoices'
     | '/test'
+    | '/admin'
+    | '/admin/invoices'
     | '/demo/table'
     | '/demo/tanstack-query'
+    | '/warehouse/login'
+    | '/warehouse/receipts'
     | '/demo/form/address'
     | '/demo/form/simple'
-    | '/warehouse/receipt/add'
+    | '/warehouse/receipts/add'
   id:
     | '__root__'
     | '/'
-    | '/invoices'
     | '/test'
+    | '/admin'
+    | '/admin/_layout'
+    | '/admin/invoices'
     | '/demo/table'
     | '/demo/tanstack-query'
+    | '/warehouse/login'
+    | '/warehouse/receipts'
+    | '/admin/'
     | '/demo/form/address'
     | '/demo/form/simple'
-    | '/warehouse/receipt/add'
+    | '/warehouse/receipts_/add'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  InvoicesRoute: typeof InvoicesRoute
   TestRoute: typeof TestRoute
+  AdminRoute: typeof AdminRouteWithChildren
   DemoTableRoute: typeof DemoTableRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
+  WarehouseLoginRoute: typeof WarehouseLoginRoute
+  WarehouseReceiptsRoute: typeof WarehouseReceiptsRoute
   DemoFormAddressRoute: typeof DemoFormAddressRoute
   DemoFormSimpleRoute: typeof DemoFormSimpleRoute
-  WarehouseReceiptAddRoute: typeof WarehouseReceiptAddRoute
+  WarehouseReceiptsAddRoute: typeof WarehouseReceiptsAddRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/test': {
       id: '/test'
       path: '/test'
@@ -143,18 +208,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TestRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/invoices': {
-      id: '/invoices'
-      path: '/invoices'
-      fullPath: '/invoices'
-      preLoaderRoute: typeof InvoicesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/warehouse/receipts': {
+      id: '/warehouse/receipts'
+      path: '/warehouse/receipts'
+      fullPath: '/warehouse/receipts'
+      preLoaderRoute: typeof WarehouseReceiptsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/warehouse/login': {
+      id: '/warehouse/login'
+      path: '/warehouse/login'
+      fullPath: '/warehouse/login'
+      preLoaderRoute: typeof WarehouseLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/demo/tanstack-query': {
@@ -171,11 +250,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoTableRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/warehouse/receipt/add': {
-      id: '/warehouse/receipt/add'
-      path: '/warehouse/receipt/add'
-      fullPath: '/warehouse/receipt/add'
-      preLoaderRoute: typeof WarehouseReceiptAddRouteImport
+    '/admin/invoices': {
+      id: '/admin/invoices'
+      path: '/invoices'
+      fullPath: '/admin/invoices'
+      preLoaderRoute: typeof AdminInvoicesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/_layout': {
+      id: '/admin/_layout'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminLayoutRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/warehouse/receipts_/add': {
+      id: '/warehouse/receipts_/add'
+      path: '/warehouse/receipts/add'
+      fullPath: '/warehouse/receipts/add'
+      preLoaderRoute: typeof WarehouseReceiptsAddRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/demo/form/simple': {
@@ -195,15 +288,31 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AdminRouteChildren {
+  AdminLayoutRoute: typeof AdminLayoutRoute
+  AdminInvoicesRoute: typeof AdminInvoicesRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminLayoutRoute: AdminLayoutRoute,
+  AdminInvoicesRoute: AdminInvoicesRoute,
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  InvoicesRoute: InvoicesRoute,
   TestRoute: TestRoute,
+  AdminRoute: AdminRouteWithChildren,
   DemoTableRoute: DemoTableRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,
+  WarehouseLoginRoute: WarehouseLoginRoute,
+  WarehouseReceiptsRoute: WarehouseReceiptsRoute,
   DemoFormAddressRoute: DemoFormAddressRoute,
   DemoFormSimpleRoute: DemoFormSimpleRoute,
-  WarehouseReceiptAddRoute: WarehouseReceiptAddRoute,
+  WarehouseReceiptsAddRoute: WarehouseReceiptsAddRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

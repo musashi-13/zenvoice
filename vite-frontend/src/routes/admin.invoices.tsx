@@ -1,3 +1,4 @@
+// admin/invoices.tsx  
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import {
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/button'
 
 import { ChevronDown, ChevronRight, Download } from 'lucide-react'
 
-export const Route = createFileRoute('/invoices')({
+export const Route = createFileRoute('/admin/invoices')({
   component: RouteComponent,
 })
 
@@ -172,7 +173,7 @@ function RouteComponent() {
                             return (
                               <>
                                 <div className="mb-2">
-                                  <span className="font-medium">Vendor:</span>{' '}
+                                  <span className="font-medium">Vendor:</span>{" "}
                                   {parsed.vendor_name || 'N/A'}
                                 </div>
                                 <div className="mb-2">
