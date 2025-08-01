@@ -1,4 +1,4 @@
-// src/api/invoiceStoreApi.ts
+// src/api/invoice-store.ts
 import { Request, Response } from 'express';
 import pool from '../db/db';
 

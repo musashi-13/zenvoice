@@ -12,7 +12,7 @@ export const getTest = (req: Request, res: Response) => {
 };
 
 export const getLucky = (req: Request, res: Response) => {
-  const filePath = path.join(__dirname, '../../public/lucky.gif');
+  const filePath = path.join(__dirname, '../public/lucky.gif');
   res.sendFile(filePath, (err) => {
     if (err) {
         console.log('I\'m feeling lucky!')
