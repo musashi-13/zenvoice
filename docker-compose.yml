@@ -17,10 +17,6 @@ services:
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@127.0.0.1:9093
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
-      - KAFKA_CFG_NUM_PARTITIONS=3
-      - LOGGING_LEVEL=WARN
-      - KAFKA_CFG_LOG4J_ROOT_LOGLEVEL=WARN
-      - KAFKA_CFG_LOG4J_LOGGERS=org.apache.kafka=WARN,kafka=WARN,kafka.cluster=WARN
     volumes:
       - kafka_data:/bitnami/kafka
     healthcheck:
@@ -56,7 +52,6 @@ services:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=invoice-pipeline
-      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --lc-collate=C --lc-ctype=C
     ports:
       - "5432:5432"
     volumes:
@@ -79,12 +74,20 @@ services:
       kafka:
         condition: service_healthy
     volumes:
-      - ./zoho_api.py:/app/zoho_api.py
-      - ./zoho_auth.py:/app/zoho_auth.py
-      - ./zoho_token.pickle:/app/zoho_token.pickle
+      # Mount the new logger and updated Zoho files
+      - ./email_monitor/logger_config.py:/app/logger_config.py
+      - ./email_monitor/zoho_api.py:/app/zoho_api.py
+      - ./email_monitor/zoho_auth.py:/app/zoho_auth.py
+      # IMPORTANT: Use zoho_tokens.json now, not .pickle
+      - ./email_monitor/zoho_tokens.json:/app/zoho_tokens.json
     ports:
       - "8080:8080"
     environment:
+      # --- Logging Configuration ---
+      - LOG=${LOG}
+      - SERVICE_NAME_LOG_VAR=EMAIL_MONITOR_LOG
+      - EMAIL_MONITOR_LOG=${EMAIL_MONITOR_LOG}
+      # --- Original Environment Vars ---
       - PYTHONUNBUFFERED=1
       - OAUTH_PORT=8080
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
@@ -104,11 +107,17 @@ services:
       dockerfile: Dockerfile
     container_name: invoice-uploader
     depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - kafka
+      - postgres
+    volumes:
+      # Mount the logger config into this service
+      - ./invoice_uploader/logger_config.py:/app/logger_config.py
     environment:
+      # --- Logging Configuration ---
+      - LOG=${LOG}
+      - SERVICE_NAME_LOG_VAR=INVOICE_UPLOADER_LOG
+      - INVOICE_UPLOADER_LOG=${INVOICE_UPLOADER_LOG}
+      # --- Original Environment Vars ---
       - PYTHONUNBUFFERED=1
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -127,15 +136,21 @@ services:
       dockerfile: Dockerfile
     container_name: invoice-processor
     depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - kafka
+      - postgres
     volumes:
-      - ./zoho_api.py:/app/zoho_api.py
-      - ./zoho_auth.py:/app/zoho_auth.py
-      - ./zoho_token.pickle:/app/zoho_token.pickle
+      # Mount the new logger and updated Zoho files
+      - ./invoice_processor/logger_config.py:/app/logger_config.py
+      - ./invoice_processor/zoho_api.py:/app/zoho_api.py
+      - ./invoice_processor/zoho_auth.py:/app/zoho_auth.py
+      # IMPORTANT: Use zoho_tokens.json now, not .pickle
+      - ./invoice_processor/zoho_tokens.json:/app/zoho_tokens.json
     environment:
+      # --- Logging Configuration ---
+      - LOG=${LOG}
+      - SERVICE_NAME_LOG_VAR=INVOICE_PROCESSOR_LOG
+      - INVOICE_PROCESSOR_LOG=${INVOICE_PROCESSOR_LOG}
+      # --- Original Environment Vars ---
       - PYTHONUNBUFFERED=1
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -151,7 +166,6 @@ services:
     networks:
       - kafka-network
 
-
   express-backend:
     build:
       context: ./express-backend
@@ -163,6 +177,8 @@ services:
     ports:
       - "4000:4000"
     environment:
+      # Add the logging variable for Express if you implement it there
+      - EXPRESS_BACKEND_LOG=${EXPRESS_BACKEND_LOG}
       - DATABASE_URL=postgresql://user:password@postgres:5432/invoice-pipeline?schema=public
       - PORT=4000
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
@@ -175,7 +191,6 @@ services:
       - ./express-backend/zoho_tokens.json:/app/zoho_tokens.json
     networks:
       - kafka-network
-
 
 volumes:
   kafka_data:
