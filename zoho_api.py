@@ -1,3 +1,5 @@
+from datetime import datetime
+import json
 import requests
 import logging
 from typing import Dict
@@ -106,36 +108,67 @@ class ZohoAPI:
             logger.error(f"Failed to fetch details for PO {purchaseorder_id}: {e.response.status_code} - {e.response.text}")
             return {}
 
-    def create_bill_from_purchase_order(self, purchaseorder_id: str) -> Dict:
-        """Fetch PO data and create a draft bill."""
+    def create_bill_from_purchase_order(self, po_details: Dict, scanned_invoice: Dict) -> Dict:
+        """
+        Creates a draft bill using the correct two-step process:
+        1. Get a pre-filled bill template from Zoho.
+        2. Filter that template to create a clean payload.
+        3. Post the clean payload to create the bill.
+        """
+        purchaseorder_id = po_details.get("purchaseorder_id")
+        if not purchaseorder_id:
+            logger.error("Purchase order ID is missing from the provided details.")
+            return {}
+
         try:
-            # Fetch purchase order details
-            po_details = self.get_purchase_order_details(purchaseorder_id)
-            if not po_details:
-                logger.error(f"No purchase order data found for PO {purchaseorder_id}")
+            # Step 1: Get the pre-filled bill template from Zoho's special endpoint.
+            bill_template_url = "bills/editpage/frompurchaseorders"
+            params = {'purchaseorder_ids': purchaseorder_id}
+            
+            response_template = self.make_api_call("GET", bill_template_url, params=params)
+            
+            bill_template = response_template.get("bill")
+            if not bill_template:
+                logger.error(f"Failed to generate bill template from PO {purchaseorder_id}. Response: {response_template}")
                 return {}
 
-            # Prepare bill data based on PO
-            bill_data = {
-                "purchaseorder_ids": [purchaseorder_id],
-                "vendor_id": po_details.get("vendor_id"),
-                "bill_number": f"{po_details.get('purchaseorder_number', purchaseorder_id)}",
-                "date": po_details.get("purchaseorder_date"),
-                "due_date": po_details.get("due_date"),
-                "currency_id": po_details.get("currency_id"),
-                "line_items": po_details.get("line_items", []),
-                "reference_number": po_details.get("reference_number"),
+            # Step 2: **THE FIX** - Create a new, filtered payload, exactly like the old working code.
+            # This prevents the "Extra keys" error by only including fields Zoho expects.
+            filtered_bill_payload = {
+                "purchaseorder_ids": bill_template.get("purchaseorder_ids"),
+                "vendor_id": bill_template.get("vendor_id"),
+                "bill_number": scanned_invoice.get("invoice_number"),
+                "date": scanned_invoice.get("bill_date") or datetime.now().strftime('%Y-%m-%d'),
+                "due_date": scanned_invoice.get("due_date", ""),
+                "currency_id": bill_template.get("currency_id"),
+                "line_items": bill_template.get("line_items", []), # The template's line_items are usually clean
+                "reference_number": po_details.get("purchaseorder_number"),
                 "status": "draft"
             }
 
-            # Create the bill
-            response = self.make_api_call("POST", "bills", data=bill_data)
-            data = response.get("bill", {})
-            bill_id = data.get("bill_id")
-            logger.info(f"Created draft bill for PO {purchaseorder_id}: {bill_id}")
-            return data
+            # Step 3: Create the actual bill using the clean, filtered payload.
+            logger.info(f"Attempting to create bill for PO {purchaseorder_id}...")
+            response_create = self.make_api_call("POST", "bills", data=filtered_bill_payload)
+            
+            created_bill = response_create.get("bill", {})
+            bill_id = created_bill.get("bill_id")
+            logger.info(f"Successfully created draft bill {bill_id} for PO {purchaseorder_id}")
+            return created_bill
+
         except requests.exceptions.HTTPError as e:
+            try:
+                error_response = e.response.json()
+                error_message = error_response.get("message", "").lower()
+                if "billed already" in error_message or "associated with a bill" in error_message:
+                    logger.warning(f"PO {purchaseorder_id} has already been billed. Skipping bill creation.")
+                    return {}
+            except (ValueError, json.JSONDecodeError):
+                pass
+            
             logger.error(f"Error creating bill for PO {purchaseorder_id}: {e.response.status_code} - {e.response.text}")
+            return {}
+        except Exception as e:
+            logger.error(f"An unexpected error occurred while creating bill for PO {purchaseorder_id}: {e}")
             return {}
 
     def open_bill(self, bill_id: str) -> bool:

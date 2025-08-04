@@ -1,15 +1,17 @@
 import os
 import requests
-import pickle
-import logging
+import json
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import threading
+from logger_config import setup_logger
+
+# This allows the logger to be configured by the environment variable
+# passed from docker-compose (e.g., EMAIL_MONITOR_LOG or INVOICE_PROCESSOR_LOG)
+SERVICE_LOG_VAR = os.getenv('SERVICE_NAME_LOG_VAR', 'LOG') 
+logger = setup_logger(__name__, SERVICE_LOG_VAR)
 
 load_dotenv()
-
-logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 class ZohoAuth:
     def __init__(self):
@@ -21,14 +23,13 @@ class ZohoAuth:
         self.access_token = None
         self.token_expiry = None
         
-        self.token_file = "zoho_token.pickle"
+        self.token_file = "zoho_tokens.json" 
         self.region = "in"
-        # Use a Re-entrant Lock (RLock) to prevent deadlocks when a method
-        # that already holds the lock calls another method that also needs the lock.
         self._lock = threading.RLock()
 
         if not all([self.client_id, self.client_secret, self.organization_id]):
-            raise ValueError("Missing required Zoho credentials in environment variables.")
+            logger.critical("Missing required Zoho credentials in environment variables.")
+            raise ValueError("Missing required Zoho credentials.")
 
         # Initialize tokens
         self.load_tokens()
@@ -37,51 +38,62 @@ class ZohoAuth:
                 self.refresh_or_exchange_tokens()
 
     def get_auth_code(self):
-        """Prompt user to enter authorization code manually or use env variable."""
+        """Gets authorization code from environment variables."""
+        
         auth_code = os.getenv("ZOHO_AUTH_CODE")
         if auth_code:
             logger.debug("Using ZOHO_AUTH_CODE from environment variables.")
             return auth_code
-        logger.debug("Please generate an authorization code manually from the Zoho Developer Console:")
-        return input("Enter the new auth code: ")
+        
+        logger.critical("ZOHO_AUTH_CODE is not set. Cannot generate new tokens. Check your environment variables.")
+        raise Exception("ZOHO_AUTH_CODE is required for initial token generation in a non-interactive environment.")
 
     def exchange_code_for_tokens(self, auth_code):
         """Exchange authorization code for access and refresh tokens."""
-        url = f"https://accounts.zoho.in/oauth/v2/token"
+        
+        logger.debug("Attempting to exchange authorization code for new tokens...")
+        url = f"https://accounts.zoho.{self.region}/oauth/v2/token"
         data = {
             "grant_type": "authorization_code",
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "code": auth_code
         }
-        response = requests.post(url, data=data, timeout=10)
-        if response.status_code == 200:
+        try:
+            response = requests.post(url, data=data, timeout=15)
+            response.raise_for_status()
             tokens = response.json()
+            
             with self._lock:
                 self.access_token = tokens["access_token"]
                 self.refresh_token = tokens["refresh_token"]
                 self.token_expiry = datetime.now() + timedelta(seconds=tokens["expires_in"])
                 self.save_tokens()
             logger.info("Successfully exchanged auth code for tokens.")
-        else:
-            logger.fatal(f"Failed to exchange code: {response.status_code} - {response.text}")
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"Failed to exchange code: {e.response.status_code} - {e.response.text}")
             raise Exception("Token exchange failed.")
 
     def refresh_tokens(self):
         """Refresh access token using refresh token."""
+        
         if not self.refresh_token:
-            logger.fatal("No refresh token available. Please provide an auth code.")
+            logger.warning("No refresh token available. An auth code will be required.")
             return False
-        url = f"https://accounts.zoho.in/oauth/v2/token"
+            
+        logger.debug("Attempting to refresh access token...")
+        url = f"https://accounts.zoho.{self.region}/oauth/v2/token"
         data = {
             "grant_type": "refresh_token",
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "refresh_token": self.refresh_token
         }
-        response = requests.post(url, data=data, timeout=10)
-        if response.status_code == 200:
+        try:
+            response = requests.post(url, data=data, timeout=15)
+            response.raise_for_status()
             tokens = response.json()
+
             with self._lock:
                 self.access_token = tokens["access_token"]
                 self.refresh_token = tokens.get("refresh_token", self.refresh_token)
@@ -89,12 +101,13 @@ class ZohoAuth:
                 self.save_tokens()
             logger.info("Successfully refreshed access token.")
             return True
-        else:
-            logger.fatal(f"Failed to refresh token: {response.status_code} - {response.text}. Re-authentication required.")
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"Failed to refresh token: {e.response.status_code} - {e.response.text}. Re-authentication may be required.")
             return False
 
     def refresh_or_exchange_tokens(self):
         """Attempt to refresh tokens; fall back to exchanging a new auth code if refresh fails."""
+        
         with self._lock:
             if not self.refresh_tokens():
                 auth_code = self.get_auth_code()
@@ -102,42 +115,48 @@ class ZohoAuth:
 
     def is_token_expired(self):
         """Check if the access token has expired with a 5-minute buffer."""
+        
         if not self.token_expiry:
+            logger.debug("Token expiry not set, assuming token is expired.")
             return True
-        return datetime.now() >= (self.token_expiry - timedelta(seconds=300))
+        is_expired = datetime.now() >= (self.token_expiry - timedelta(seconds=300))
+        logger.debug(f"Token expiration check: {'Expired' if is_expired else 'Valid'}.")
+        return is_expired
 
     def save_tokens(self):
-        """Save tokens to a pickle file with error handling."""
+        logger.debug(f"Saving tokens to {self.token_file}...")
         tokens = {
             "access_token": self.access_token,
             "refresh_token": self.refresh_token,
-            "expiry": self.token_expiry
+            "expiry_iso": self.token_expiry.isoformat() if self.token_expiry else None
         }
         try:
-            with open(self.token_file, "wb") as f:
-                pickle.dump(tokens, f)
+            with open(self.token_file, "w") as f:
+                json.dump(tokens, f, indent=2)
             logger.info(f"Saved tokens to {self.token_file}")
         except (IOError, PermissionError) as e:
             logger.error(f"Failed to save tokens to {self.token_file}: {e}")
 
     def load_tokens(self):
-        """Load tokens from a pickle file if it exists, with error handling."""
-        if os.path.exists(self.token_file):
-            try:
-                with open(self.token_file, "rb") as f:
-                    tokens = pickle.load(f)
-                    with self._lock:
-                        self.access_token = tokens["access_token"]
-                        self.refresh_token = tokens["refresh_token"]
-                        self.token_expiry = tokens["expiry"]
-                    logger.info(f"Loaded tokens from {self.token_file}")
-            except (pickle.UnpicklingError, EOFError, IOError) as e:
-                logger.error(f"Failed to load tokens from {self.token_file}: {e}")
-                # Clear invalid tokens to force refresh
+        if not os.path.exists(self.token_file):
+            logger.info(f"Token file '{self.token_file}' not found. A new one will be created if needed.")
+            return
+
+        try:
+            with open(self.token_file, "r") as f:
+                tokens = json.load(f)
                 with self._lock:
-                    self.access_token = None
-                    self.refresh_token = None
-                    self.token_expiry = None
+                    self.access_token = tokens.get("access_token")
+                    self.refresh_token = tokens.get("refresh_token")
+                    expiry_str = tokens.get("expiry_iso")
+                    self.token_expiry = datetime.fromisoformat(expiry_str) if expiry_str else None
+            logger.info(f"Loaded tokens from {self.token_file}")
+        except (json.JSONDecodeError, IOError, TypeError) as e:
+            logger.error(f"Failed to load or parse tokens from {self.token_file}: {e}. Will attempt to generate new tokens.")
+            with self._lock:
+                self.access_token = None
+                self.refresh_token = None
+                self.token_expiry = None
 
     def get_access_token(self):
         """Return the current access token, refreshing or exchanging if necessary."""
@@ -145,6 +164,7 @@ class ZohoAuth:
             if self.is_token_expired():
                 self.refresh_or_exchange_tokens()
             if not self.access_token:
+                logger.critical("Failed to obtain a valid access token after all attempts.")
                 raise Exception("Failed to obtain a valid access token after refresh.")
             return self.access_token
     
@@ -155,9 +175,19 @@ class ZohoAuth:
             raise Exception("Failed to refresh token after 401. Re-authentication required.")
 
 if __name__ == "__main__":
+    # This block allows you to run the script directly to test/generate a token
     try:
+        # The logger needs to know which env var to check.
+        # For local testing, we can just set it directly.
+        os.environ['SERVICE_NAME_LOG_VAR'] = 'LOG'
+        os.environ['LOG'] = 'DEV' # Set to DEV for detailed local testing
+        
+        # Re-initialize logger with test settings
+        logger = setup_logger(__name__, 'LOG')
+
         auth = ZohoAuth()
         token = auth.get_access_token()
-        logger.info(f"Obtained access token: {token[:10]}...")
+        logger.info(f"Successfully obtained access token: {token[:10]}...")
     except Exception as e:
-        logger.fatal(f"Authentication error: {e}")
+        logger.critical(f"Authentication error: {e}", exc_info=True)
+

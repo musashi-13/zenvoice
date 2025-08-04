@@ -79,13 +79,18 @@ def match_invoice_with_purchase_order(scanned_data: Dict) -> Dict:
         else:
             match = False
             differences.append(f"Item {description} not found in purchase order")
+    # --- MODIFIED BILL CREATION CALL ---
     bill = {}
     if match:
-        bill = zoho_api.create_bill_from_purchase_order(purchase_order_id)
+        print("Match found, creating bill from purchase order...")
+        # Pass the already-fetched details to the API function
+        bill = zoho_api.create_bill_from_purchase_order(purchase_order_details, scanned_data)
+        
         if bill and bill.get("bill_id"):
             print(f"Created draft bill {bill['bill_id']} for PO {purchase_order_id}")
         else:
-            print(f"Failed to create draft bill for PO {purchase_order_id}")
+            # This will now catch the "already billed" warning or other creation errors
+            print(f"Failed to create draft bill for PO {purchase_order_id}. It might already be billed or another error occurred.")
 
     message = "Match successful" if match else "Match failed" + (f" due to: {', '.join(differences)}" if differences else "")
     return {
@@ -94,7 +99,7 @@ def match_invoice_with_purchase_order(scanned_data: Dict) -> Dict:
         "bill": bill,
         "purchase_order_id": purchase_order_id,
         "differences": differences if not match else [],
-        "purchase_order_details": purchase_order_details  # Include all specified fields for future use
+        "purchase_order_details": purchase_order_details
     }
 
 # Example usage (for testing)
