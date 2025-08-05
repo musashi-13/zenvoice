@@ -1,8 +1,8 @@
+import os
 import json
 import base64
-import logging
-import os
 import uuid
+import sys
 import psycopg2
 from psycopg2.extras import Json
 from datetime import datetime, timezone
@@ -10,9 +10,13 @@ from kafka import KafkaConsumer
 from dotenv import load_dotenv
 from invoice_validator import match_invoice_with_purchase_order
 from invoice_scanner import ocr_pdf, format_with_gemini
+from logger_config import setup_logger
 
+# This allows the logger to be configured by the environment variable
+# passed from docker-compose (e.g., INVOICE_PROCESSOR_LOG)
+SERVICE_LOG_VAR = os.getenv('SERVICE_NAME_LOG_VAR', 'LOG') 
+logger = setup_logger(__name__, SERVICE_LOG_VAR)
 
-# Load environment variables
 load_dotenv()
 
 # Kafka Config
@@ -26,15 +30,10 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "invoice-pipeline")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
 
-# Set up logging to console only
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s: %(message)s"
-)
-logging.info("OCR Processor Script Started.")
 
 def init_postgres():
     """Initialize PostgreSQL connection."""
+    logger.debug("Connecting to PostgreSQL database...")
     try:
         conn = psycopg2.connect(
             host=POSTGRES_HOST,
@@ -43,24 +42,31 @@ def init_postgres():
             user=POSTGRES_USER,
             password=POSTGRES_PASSWORD
         )
-        logging.info("Connected to PostgreSQL database.")
+        logger.info("Successfully connected to PostgreSQL.")
         return conn
     except Exception as e:
-        logging.error(f"Failed to connect to PostgreSQL: {e}")
+        logger.error(f"Failed to connect to PostgreSQL: {e}", exc_info=True)
         raise
 
 def check_invoice_exists(conn, combined_key):
+    """Checks if an invoice with the given message_id already exists."""
+    
+    logger.debug(f"Checking for existing invoice with key: {combined_key}")
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM invoice_store WHERE message_id = %s", (combined_key,))
-            return cur.fetchone() is not None
+            exists = cur.fetchone() is not None
+            # logger.debug(f"Invoice with key '{combined_key}' {'exists' if exists else 'does not exist'}.")
+            return exists
     except Exception as e:
-        logging.error(f"Error checking invoice existence: {e}")
+        logger.error(f"Error checking invoice existence for key {combined_key}: {e}", exc_info=True)
         conn.rollback()
         return False
 
 def insert_invoice(conn, db_invoice):
-    """Insert a new invoice into the database."""
+    """Insert a new invoice record into the database."""
+    
+    combined_key = db_invoice["combined_key"]
     try:
         with conn.cursor() as cur:
             invoice_id = str(uuid.uuid4()) 
@@ -73,7 +79,7 @@ def insert_invoice(conn, db_invoice):
                 """,
                 (
                     invoice_id,
-                    db_invoice["combined_key"],
+                    combined_key,
                     db_invoice["sender"],
                     db_invoice["subject"],
                     datetime.now(timezone.utc),
@@ -81,103 +87,125 @@ def insert_invoice(conn, db_invoice):
                     "", "", "", Json(db_invoice["scanned_data"])
                 )
             )
-            logging.info(f"Inserted new invoice {db_invoice['combined_key']}.")
         conn.commit()
+        logger.info(f"Successfully inserted new invoice with ID {invoice_id} for key {combined_key}.")
     except Exception as e:
-        logging.error(f"Error inserting invoice {db_invoice['combined_key']}: {e}")
+        logger.error(f"Error inserting invoice for key {combined_key}: {e}", exc_info=True)
         conn.rollback()
         
-def update_invoice(conn, combined_key, invoice_data):
-    """Update an existing invoice by adding scanned_data if it's empty or null, otherwise skip."""
+def update_invoice_scanned_data(conn, combined_key, invoice_data):
+    """Update an existing invoice with scanned data if it's currently empty."""
+    logger.info(f"Attempting to update invoice with scanned data for key: {combined_key}")
+    try:
+        with conn.cursor() as cur:
+            # Check if scanned_data is NULL or an empty JSON object before updating
+            cur.execute(
+                """
+                UPDATE invoice_store
+                SET scanned_data = %s, updated_at = %s
+                WHERE message_id = %s AND (scanned_data IS NULL OR scanned_data = '{}'::jsonb)
+                RETURNING invoice_id;
+                """,
+                (Json(invoice_data), datetime.now(timezone.utc), combined_key)
+            )
+            updated_row = cur.fetchone()
+            if updated_row:
+                logger.info(f"Successfully updated invoice {updated_row[0]} with new scanned_data.")
+            else:
+                logger.info(f"Skipping update for key {combined_key} as it already has scanned_data.")
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error updating invoice for key {combined_key}: {e}", exc_info=True)
+        conn.rollback()
+
+def update_invoice_bill_id(conn, combined_key, bill_id):
+    """Updates an invoice record with the Zoho Bill ID after successful creation."""
+    logger.info(f"Updating invoice record for key {combined_key} with Zoho Bill ID: {bill_id}")
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT invoice_id, scanned_data 
-                FROM invoice_store 
-                WHERE message_id = %s 
-                AND (scanned_data IS NULL OR scanned_data = '{}'::jsonb)
+                UPDATE invoice_store
+                SET zoho_bill_number = %s, updated_at = %s
+                WHERE message_id = %s
                 """,
-                (combined_key,)
+                (bill_id, datetime.now(timezone.utc), combined_key)
             )
-            existing_row = cur.fetchone()
-            if existing_row:
-                invoice_id, _ = existing_row
-                cur.execute(
-                    """
-                    UPDATE invoice_store
-                    SET scanned_data = %s, updated_at = %s
-                    WHERE invoice_id = %s
-                    """,
-                    (Json(invoice_data), datetime.now(timezone.utc), invoice_id)
-                )
-                logging.info(f"Updated invoice {invoice_id} with new scanned_data.")
-            else:
-                logging.info(f"Skipping update for {combined_key}: scanned_data exists.")
-            conn.commit()
+        conn.commit()
+        logger.info(f"Database updated successfully for key {combined_key}.")
     except Exception as e:
-        logging.error(f"Error updating invoice for {combined_key}: {e}")
+        logger.error(f"Error updating invoice with Bill ID for key {combined_key}: {e}", exc_info=True)
         conn.rollback()
 
 
-
 def process_message(message, conn):
-    """Process a Kafka message containing an email invoice."""
+    """Process a single Kafka message containing an email invoice."""
     try:
         data = message.value
         email_id = data.get("email_id")
+        logger.info(f"Processing message for email_id: {email_id}")
+
         sender = data.get("sender", "")
         subject = data.get("subject", "")
 
         for index, attachment in enumerate(data.get("attachments", [])):
+            combined_key = f"{email_id}_{index}"
+            logger.info(f"Processing attachment {index} for email {email_id} (key: {combined_key})")
+
             file_data = base64.b64decode(attachment["file_data"])
-            # Process PDF in memory
+            
+            # Step 1: OCR and AI Formatting
             text = ocr_pdf(file_data)
+            if not text:
+                logger.error(f"OCR processing failed for {combined_key}. Skipping attachment.")
+                continue
+            
+            # logger.debug(f"Raw text from OCR for {combined_key}:\n---START---\n{text}\n---END---")
+            
             invoice_data = format_with_gemini(text, email_id, index)
             if not invoice_data:
-                logging.error(f"Skipping database update for {email_id} attachment {index} due to OCR/Gemini failure.")
+                logger.error(f"Gemini formatting failed for {combined_key}. Skipping attachment.")
                 continue
+            
+            logger.info(f"Successfully scanned data from Gemini for {combined_key}.")
+            logger.debug(f"Scanned data JSON: {json.dumps(invoice_data, indent=2)}")
 
-            # Update database with scanned_data
-            combined_key = f"{email_id}_{index}"
-            
-            logging.info(f"Processing invoice for email {email_id}, attachment {index} with combined key {combined_key}")
-            
+            # Step 2: Database Interaction
             if not check_invoice_exists(conn, combined_key):
                 db_invoice = {
-                    "combined_key": combined_key,
-                    "sender": sender,
-                    "subject": subject,
-                    "scanned_data": invoice_data
+                    "combined_key": combined_key, "sender": sender, 
+                    "subject": subject, "scanned_data": invoice_data
                 }
                 insert_invoice(conn, db_invoice)
             else:
-                update_invoice(conn, combined_key, invoice_data)
-            logging.info(f"Scanned data from Gemini: {invoice_data}")
+                update_invoice_scanned_data(conn, combined_key, invoice_data)
+            
+            # Step 3: Validation and Bill Creation
+            logger.debug(f"Starting validation against Zoho for {combined_key}...")
             validation_result = match_invoice_with_purchase_order(invoice_data)
-            if validation_result["match"]:
-                print(f"Invoice email attachment {combined_key} matches Purchase Order {validation_result['purchase_order_id']}")
-                bill = validation_result["bill"]
+            
+            logger.debug(f"Validation result for {combined_key}: {json.dumps(validation_result, indent=2)}")
+
+            if validation_result.get("match"):
+                logger.info(f"Invoice {combined_key} successfully matched PO {validation_result['purchase_order_id']}")
+                bill = validation_result.get("bill", {})
                 if bill and bill.get("bill_id"):
-                    # Update database with zoho_bill_number
-                    cursor = conn.cursor()
-                    update_query = """
-                        UPDATE invoice_store
-                        SET zoho_bill_number = %s,
-                            updated_at = %s
-                        WHERE message_id = %s
-                    """
-                    cursor.execute(update_query, (bill["bill_id"], datetime.now(), combined_key))
-                    conn.commit()
-                    logging.info(f"Updated database with Zoho bill ID {bill['bill_id']} for {combined_key}")
+                    update_invoice_bill_id(conn, combined_key, bill["bill_id"])
+                else:
+                    # This case handles when bill creation fails (e.g., already billed)
+                    logger.warning(f"Validation matched, but no bill was created for {combined_key}. Check Zoho API logs for details.")
             else:
-                logging.error(f"Invoice {combined_key} does not match Purchase Order {validation_result['purchase_order_id']}: {validation_result['message']}")
-                logging.error(f"Differences: {validation_result['differences']}")
+                logger.error(f"Invoice {combined_key} failed validation against PO.")
+                logger.error(f"Reason: {validation_result.get('message')}")
+                if validation_result.get("differences"):
+                    logger.error(f"Differences: {validation_result['differences']}")
+
     except Exception as e:
-        logging.error(f"Error processing message: {e}")
+        logger.error(f"An unexpected error occurred while processing Kafka message: {e}", exc_info=True)
 
 def consume_kafka():
     """Consume messages from Kafka and process them."""
+    conn = None
     try:
         conn = init_postgres()
         consumer = KafkaConsumer(
@@ -188,16 +216,20 @@ def consume_kafka():
             enable_auto_commit=False,
             value_deserializer=lambda v: json.loads(v.decode("utf-8"))
         )
-        logging.info("Kafka Consumer started, waiting for messages...")
+        logger.info("Kafka Consumer started. Waiting for messages...")
         for message in consumer:
             process_message(message, conn)
             consumer.commit()
-    except Exception as e:
-        logging.error(f"Kafka Consumer error: {e}")
     finally:
-        if 'conn' in locals():
+        if conn:
             conn.close()
-            logging.info("PostgreSQL connection closed.")
+            logger.info("PostgreSQL connection closed.")
 
 if __name__ == "__main__":
-    consume_kafka()
+    try:
+        logger.info("--- Starting Invoice Processor Service ---")
+        consume_kafka()
+    except Exception as e:
+        logger.critical("Invoice Processor service failed to start or crashed.", exc_info=True)
+        sys.exit(1)
+ 
